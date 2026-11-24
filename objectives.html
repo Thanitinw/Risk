@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Objectives & KPI · Precise Risk Cockpit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="login" id="login" hidden></div>
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 27 27" width="27" height="27" aria-hidden="true"><rect x="0" y="0" width="6" height="6" rx="1.2" fill="#e6870c"/><rect x="7" y="0" width="6" height="6" rx="1.2" fill="#e6870c"/><rect x="14" y="0" width="6" height="6" rx="1.2" fill="#d92d20"/><rect x="21" y="0" width="6" height="6" rx="1.2" fill="#d92d20"/><rect x="0" y="7" width="6" height="6" rx="1.2" fill="#caa400"/><rect x="7" y="7" width="6" height="6" rx="1.2" fill="#caa400"/><rect x="14" y="7" width="6" height="6" rx="1.2" fill="#e6870c"/><rect x="21" y="7" width="6" height="6" rx="1.2" fill="#d92d20"/><rect x="0" y="14" width="6" height="6" rx="1.2" fill="#1a9a51"/><rect x="7" y="14" width="6" height="6" rx="1.2" fill="#caa400"/><rect x="14" y="14" width="6" height="6" rx="1.2" fill="#caa400"/><rect x="21" y="14" width="6" height="6" rx="1.2" fill="#e6870c"/><rect x="0" y="21" width="6" height="6" rx="1.2" fill="#1a9a51"/><rect x="7" y="21" width="6" height="6" rx="1.2" fill="#1a9a51"/><rect x="14" y="21" width="6" height="6" rx="1.2" fill="#caa400"/><rect x="21" y="21" width="6" height="6" rx="1.2" fill="#e6870c"/></svg>
+      <div class="brand-text">
+        <div class="t1">Risk Cockpit</div>
+        <div class="t2">Enterprise Risk Management</div>
+      </div>
+    </div>
+    <nav class="tabs" id="tabnav" aria-label="เมนูหลัก"></nav>
+    <div class="tb-right">
+      <span class="data-date">ข้อมูล ณ 17 ธ.ค. 2569</span>
+      <div class="user-slot" id="userSlot"></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div id="panels"></div>
+</div>
+
+<footer>
+  <div class="foot-row"><button type="button" class="foot-link" data-goto-page="revision">Audit Trail</button><button type="button" class="foot-link" data-goto-page="access">Roles &amp; Access</button></div>
+</footer>
+
+<script>window.PRC_PAGE="overview";</script>
+<script src="data/org.js"></script>
+<script src="data/strategy.js"></script>
+<script src="data/risks.js"></script>
+<script src="data/access.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

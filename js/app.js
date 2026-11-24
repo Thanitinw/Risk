@@ -23,11 +23,13 @@
   var TIERS = PRC.TIERS;
   var OBJ_TIER = PRC.OBJ_TIER;
   var OBJ_TIER_NOTE = PRC.OBJ_TIER_NOTE;
+  // KRI inherits the Tier of its risk's primary objective (first in objs)
+  function tierWhy(r, short){ var c=(r.objs||[])[0], t=OBJ_TIER[c]; if(!t) return ''; return '<span class="kri-tier">'+tierBadge(c)+'<b class="mono">'+c+'</b>'+(short?'':' '+esc(OBJ_TIER_NOTE[c]||TIERS[t].def))+'</span>'; }
   function tierBadge(code){ var t=OBJ_TIER[code]; if(!t) return '';
     return '<span class="tier t'+t+'" title="'+escAttr('Tier '+t+' · '+TIERS[t].name+' — '+TIERS[t].def+(OBJ_TIER_NOTE[code]?' · '+OBJ_TIER_NOTE[code]:''))+'">T'+t+'</span>'; }
   var selectedKpi = null;
   var selectedRisk = null;
-  var profileView = "objective"; // Risk Profile: "objective" (grouped by Strategic Objective) | "list" (register table)
+  var profileView = "list"; var riskObjs = [], riskQ = "", kriView = "now", audF = "all", audLimit = 60; // Risk Profile: "objective" (grouped by Strategic Objective) | "list" (register table)
   var regCell = null; // heat-map cell filter for the register, e.g. "3-4"
   var riskLvl = [];    // Risk Profile level filter ([] = ทั้งหมด), multi-select
   var kriSt = [];      // KRI Monitoring status filter ([] = ทั้งหมด), multi-select
@@ -66,9 +68,9 @@
     return tbRow('บริษัท', rkChip('co','ALL','ทั้งหมด',!activeFilter.length)+registerCompanyCols().map(function(c){
       return rkChip('co',c.id,'<b class="mono l'+c.layer+'">'+c.id+'</b>',activeFilter.indexOf(c.id)!==-1,countOf(c.id)); }).join(''));
   }
-  function exampleTag(r){ return r.example ? ' <span class="ex-tag" title="ความเสี่ยงระดับกลุ่มตัวอย่าง วิเคราะห์จาก Corporate KPI — รอ Risk Owner ยืนยัน">ตัวอย่าง</span>' : ''; }
+  function exampleTag(r){ return ''; }
   /* per-value example marker for REAL risks (example risks are already tagged as a whole) */
-  function mockTag(r, on){ return (!r.example && on) ? ' <span class="ex-tag" title="ค่าตัวอย่าง รอข้อมูลจริงจาก Risk Owner">ตัวอย่าง</span>' : ''; }
+  function mockTag(r, on){ return ''; }
   function emptyState(msg){
     return '<div class="empty-state"><div class="big">ไม่พบข้อมูล</div>'+esc(msg)+'</div>';
   }
@@ -327,6 +329,11 @@
       '<div class="cm-foot-row"><span class="cm-foot-h">Tier (Holding focus)</span>'+
         [1,2,3].map(function(t){ return '<span><span class="tier t'+t+'">T'+t+'</span> <b>'+TIERS[t].name+'</b> — '+esc(TIERS[t].def)+'</span>'; }).join('')+
       '</div>'+
+      '<div class="cm-foot-row"><span class="cm-foot-h">กติกาการติดตาม</span>'+
+        '<span>1. Holding ดู Corporate KPI ตามรอบของ Tier</span>'+
+        '<span>2. Company KPI บริษัทย่อยดูเอง ส่งขึ้นมาเมื่อ KRI เกิน Tolerance</span>'+
+        '<span>3. KPI ที่เป้า = 0 ครั้ง รายงานทันทีที่เกิด</span>'+
+      '</div>'+
       '<div class="cm-foot-row"><span class="cm-foot-h">สัญลักษณ์</span>'+
         '<span><i class="cm-sw corp"></i> Corporate KPI</span>'+
         '<span><i class="cm-sw comp"></i> Company KPI</span>'+
@@ -368,7 +375,7 @@
         return '<div class="cm-row v'+v+'" data-obj="'+o.code+'" data-ncom="'+fm.length+'">'+
           '<div class="cm-obj"><button type="button" class="cm-tg" data-cmobj="'+o.code+'" aria-expanded="'+full+'" title="ย่อ/ขยาย '+o.code+'">'+(full?'&minus;':'+')+'</button><span class="cm-oc mono">'+o.code+'</span><span class="cm-ot">'+esc(o.title)+' '+tierBadge(o.code)+
             (function(){ var g=risksForObjective(RISKS,o.code), n=g.primary.length+g.related.length;
-              return n ? '<button type="button" class="obj-risk" data-goto-obj="'+o.code+'" title="ดูความเสี่ยงที่ผูกกับ '+o.code+' ใน Risk Profile">&#9888; '+n+' ความเสี่ยง</button>' : ''; })()+
+              return n ? '<button type="button" class="obj-risk" data-goto-obj="'+o.code+'" title="ดูความเสี่ยงที่ผูกกับ '+o.code+'">&#9888; '+n+' ความเสี่ยง</button>' : ''; })()+
           '</span></div>'+
           '<div class="cm-lines">'+lines+'</div>'+
         '</div>';
@@ -485,12 +492,13 @@
     '</div>';
 
     return ''+
-    '<div class="page-head"><div><h2>เป้าหมาย KPI กลุ่มบริษัท</h2><div class="sub">Corporate KPI (PCC) &rarr; Company KPI (Parent Company / Subsidiary Company)</div></div>'+
+    '<div class="page-head"><div><h2>Objectives &amp; KPI</h2><div class="sub">ข้อมูลอ้างอิงจากแผนกลยุทธ์ ทบทวนปีละครั้ง · Corporate KPI (PCC) &rarr; Company KPI · ระบบความเสี่ยงใช้เพื่อผูกความเสี่ยงเข้ากับเป้าหมาย</div></div>'+
       '</div>'+
     regFilterBar(tbRow('มุมมอง', viewToggle))+
     groupCard+
-    (overviewView==="table" ? renderKpiRegisterCard() : orgChartCard)+
+    (overviewView==="chart" ? orgChartCard : renderKpiRegisterCard())+
     modalHtml+
+    ''+
     (selectedKpi ? (
       '<div class="modal-backdrop" id="kpiModalBackdrop">'+
         '<div class="modal-box">'+
@@ -571,15 +579,15 @@
     var scope = !activeFilter.length ? "ทั้งกลุ่ม" : (activeFilter.length<=3 ? activeFilter.join(", ") : activeFilter.length+" บริษัท");
 
     return ''+
-    '<div class="page-head"><div><h2>ภาพรวมความเสี่ยง (Risk Summary)</h2><div class="sub">สรุปสถานะความเสี่ยงของ'+(activeFilter.length?' ':'')+scope+' สำหรับที่ประชุม President และ RMC — ระดับความเสี่ยง = โอกาสเกิด (L) × ผลกระทบ (I)</div></div>'+'</div>'+
+    '<div class="page-head"><div><h2>Home</h2><div class="sub">สรุปสถานะความเสี่ยงของ'+(activeFilter.length?' ':'')+scope+' สำหรับที่ประชุม President และ RMC — ระดับความเสี่ยง = โอกาสเกิด (L) × ผลกระทบ (I)</div></div>'+'</div>'+
     '<div class="rf tb">'+companyRow(function(id){ return scopeRisks().filter(function(r){ return r.sub===id; }).length; })+
       tbSum(list.length, scopeRisks().length, 'ประเด็นความเสี่ยง', activeFilter.length>0 && !lockedScope())+'</div>'+
     '<div class="grid grid-4">'+
       '<div class="stat"><div class="lbl">ประเด็นความเสี่ยง</div><div class="val mono">'+list.length+'</div><div class="rs-sub">ครอบคลุม '+coveredObj+' จาก '+nObj+' Strategic Objective</div></div>'+
       '<div class="stat crit"><div class="lbl">ระดับสูงมาก</div><div class="val mono">'+cTally["สูงมาก"]+'</div><div class="rs-sub">สูง '+cTally["สูง"]+' · ปานกลาง '+cTally["ปานกลาง"]+' · ต่ำ '+cTally["ต่ำ"]+'</div></div>'+
-      '<div class="stat crit"><div class="lbl">KRI เกิน Tolerance</div><div class="val mono">'+nCrit+'</div><div class="rs-sub">เฝ้าระวัง '+nWatch+' · จาก KRI ทั้งหมด '+krisAll.length+'</div></div>'+
-      (function(){ var nGood=krisAll.length-nCrit-nWatch-nPend;
-        return '<div class="stat"><div class="lbl">KRI อยู่ใน Appetite</div><div class="val mono" style="color:var(--good-fg)">'+nGood+'</div><div class="rs-sub">'+(krisAll.length?Math.round(nGood/krisAll.length*100):0)+'% ของ KRI ทั้งหมด'+(nPend?' · รอข้อมูล '+nPend:'')+'</div></div>'; })()+
+      '<div class="stat crit"><div class="lbl">KRI เกิน Tolerance</div><div class="val mono">'+nCrit+'</div><div class="rs-sub">'+(function(){ var kw=revCompare(ROUNDS[ROUNDS.length-2]||"", ROUNDS[ROUNDS.length-1]||"", list).kw.length; return (kw?'<b class="ov-up">แย่ลงจากเดือนก่อน '+kw+'</b> · ':'')+'เฝ้าระวัง '+nWatch; })()+'</div></div>'+
+      (function(){ var nLate=0, ineff=0; list.forEach(function(r){ r.factors.forEach(function(f, fi){ (f.acts||[]).forEach(function(a){ var st=actState(a); if(st==="late") nLate++; if(st==="done" && factorCrit(r,fi)) ineff++; }); }); });
+        return '<div class="stat'+(nLate?' crit':'')+'"><div class="lbl">แนวทางจัดการล่าช้า</div><div class="val mono">'+nLate+'</div><div class="rs-sub">'+(ineff?'<b class="ov-up">เสร็จแล้วแต่ KRI ยังเกิน Tolerance '+ineff+'</b>':'ไม่มีแนวทางที่เสร็จแล้วแต่ KRI ยังเกิน')+'</div></div>'; })()+
     '</div>'+
     legend+
     '<div class="grid rs-grid">'+
@@ -591,6 +599,7 @@
       '<div class="card"><h3>ความเสี่ยงแยกตามบริษัท</h3>'+stackRows(byCo)+'</div>'+
       '<div class="card"><h3>ความเสี่ยงแยกตาม Domain (Strategic Objective)</h3>'+stackRows(byDom)+'</div>'+
     '</div>'+
+    ovDecide(list)+
     renderRiskModal();
   }
 
@@ -611,10 +620,9 @@
         '<td class="rg-title">'+esc(r.title)+'</td>'+
         '<td class="mono rgt-obj">'+(r.objs||[]).join(' · ')+'</td>'+
         '<td class="mono rg-li '+LVL_CLS[r.level]+'" title="'+escAttr(r.level)+'">'+r.L+'×'+r.I+'</td>'+
-        '<td>'+dataBadge(r)+'</td>'+
         '<td class="rg-own'+(r.owner?'':' none')+'">'+esc(r.owner||'ยังไม่ระบุ')+mockTag(r, r.ownerMock)+'</td></tr>';
     }).join("");
-    return '<div class="tbl-wrap"><table class="rg-tbl"><thead><tr><th>รหัส</th><th>บริษัท</th><th>ความเสี่ยง</th><th>กระทบเป้า</th><th>L×I</th><th>ข้อมูล</th><th>ผู้รับผิดชอบ</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    return '<div class="tbl-wrap"><table class="rg-tbl"><thead><tr><th>รหัส</th><th>บริษัท</th><th>ความเสี่ยง</th><th>กระทบเป้า</th><th>L×I</th><th>ผู้รับผิดชอบ</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
 
   /* ---------------- RENDER: KRI MONITORING ---------------- */
@@ -624,29 +632,41 @@
     var stCount={crit:0,watch:0,good:0,pending:0}, totalAll=0;
     list.forEach(function(r){ r.kris.forEach(function(k){ totalAll++; stCount[k.status]=(stCount[k.status]||0)+1; }); });
     var rowsHtml = list.map(function(r){
-      return r.kris.map(function(k,ki){
+      var rows = r.kris.map(function(k,ki){
         if(!inSel(kriSt, k.status)) return '';
-        return '<tr class="rs-row" data-risk="'+r.id+'" data-hsel="kri:'+ki+'" title="คลิกเพื่อดูกราฟประวัติ KRI"><td class="mono" style="color:var(--brand-700);white-space:nowrap;">'+r.id+exampleTag(r)+'</td>'+
-          '<td style="max-width:320px;">'+(k.f && r.factors ? '<span class="kri-f" title="'+escAttr(r.factors[k.f-1].name)+'">ปัจจัย '+k.f+'</span>' : '')+esc(k.name)+(k.core?' <span class="kri-core">หลัก</span>':'')+(k.calc?'<div class="kri-calc">'+esc(k.calc)+'</div>':'')+'</td>'+
+        return '<tr class="rs-row" data-risk="'+r.id+'" data-hsel="kri:'+ki+'" title="คลิกเพื่อดูกราฟประวัติ KRI">'+
+          '<td class="kg-k">'+(k.f && r.factors ? '<span class="kri-f" title="'+escAttr(r.factors[k.f-1].name)+'">ปัจจัย '+k.f+'</span>' : '')+esc(k.name)+(k.calc?'<div class="kri-calc">'+esc(k.calc)+'</div>':'')+'</td>'+
           '<td class="mono">'+esc(k.current)+mockTag(r, k.mock||k.mockTol)+'</td>'+
           '<td class="mono">'+esc(k.appetite)+'</td>'+
           '<td class="mono">'+esc(k.tolerance)+'</td>'+
           '<td><span class="kri-st">'+statusPill(k.status)+'<span class="kri-go" aria-hidden="true">'+icon("pulse")+'</span></span></td></tr>';
       }).join("");
+      if(!rows) return '';
+      var c=(r.objs||[])[0], t=OBJ_TIER[c];
+      return '<tr class="kg-h" data-risk="'+r.id+'"><td colspan="5"><span class="kg-id mono">'+r.id+'</span>'+levelPill(r.level)+'<span class="kg-t">'+esc(r.title)+'</span>'+
+        (t ? '<span class="kg-tier" title="'+escAttr(OBJ_TIER_NOTE[c]||TIERS[t].def)+'">'+tierBadge(c)+'<b class="mono">'+c+'</b> '+esc(TIERS[t].name)+'</span>' : '')+'</td></tr>'+rows;
     }).join("");
     var total = kriSt.length ? kriSt.reduce(function(a,st){ return a+(stCount[st]||0); },0) : totalAll;
     var allK=0; scopeRisks().forEach(function(r){ allK+=r.kris.length; });
+    var kvT = '<div class="view-toggle"><button type="button" class="view-toggle-btn'+(kriView==="now"?' active':'')+'" data-kview="now">'+icon("table")+'สถานะปัจจุบัน</button>'+
+      '<button type="button" class="view-toggle-btn'+(kriView==="month"?' active':'')+'" data-kview="month">'+icon("cal")+'รายเดือน</button></div>';
     var toolbar = '<div class="rf tb">'+
+      tbRow('มุมมอง', kvT)+
       companyRow(function(id){ var n=0; scopeRisks().forEach(function(r){ if(r.sub===id) n+=r.kris.length; }); return n; })+
       tbRow('สถานะ', rkChip('st','ALL','ทั้งหมด',!kriSt.length)+ST.filter(function(t){ return t[0]!=="pending" || stCount.pending || inSel(kriSt,"pending") && kriSt.length; }).map(function(t){ return rkChip('st',t[0],'<i class="rs-sw '+({crit:'crit',watch:'watch',good:'good',pending:'na'})[t[0]]+'"></i>'+t[1],kriSt.indexOf(t[0])!==-1,stCount[t[0]]||0); }).join(''))+
       tbSum(total, allK, 'KRI', (activeFilter.length>0 && !lockedScope()) || kriSt.length>0)+'</div>';
-    var tblBody = total ? ('<div class="tbl-wrap"><table><thead><tr><th>Risk ID</th><th>KRI</th><th>ค่าปัจจุบัน</th><th>Appetite</th><th>Tolerance</th><th>สถานะ</th></tr></thead>'+
+    if(kriView==="month" && total) rowsHtml = kriMonthRows(list);
+    var MN=HIST_MONTHS.slice(-6);
+    var tblBody = total && kriView==="month" ? ('<div class="tbl-wrap"><table class="km-tbl"><thead><tr><th>Risk ID</th><th>KRI</th>'+MN.map(function(m){ return '<th class="km-m">'+m.label+'</th>'; }).join('')+'<th>Appetite · Tolerance</th></tr></thead>'+
+      '<tbody>'+rowsHtml+'</tbody></table></div>'+
+      '<div class="km-key"><span><i class="km-sw crit"></i>เกิน Tolerance</span><span><i class="km-sw watch"></i>เฝ้าระวัง</span><span><i class="km-sw good"></i>ปกติ</span><span>คลิกแถวเพื่อดูกราฟ</span></div>')
+      : total ? ('<div class="tbl-wrap"><table class="kg-tbl"><thead><tr><th>KRI</th><th>ค่าปัจจุบัน</th><th>Appetite</th><th>Tolerance</th><th>สถานะ</th></tr></thead>'+
       '<tbody>'+rowsHtml+'</tbody></table></div>'+
       '<div class="hint" style="margin-top:10px;">คลิกแถวเพื่อเปิดกราฟประวัติของ KRI นั้น</div>')
       : emptyState('ไม่พบ KRI ตามตัวกรองนี้');
 
     return ''+
-    '<div class="page-head"><div><h2>KRI Monitoring</h2><div class="sub">ตัวชี้วัดความเสี่ยงหลักเทียบ Risk Appetite และ Risk Tolerance · ทุก KRI ค่ายิ่งสูงยิ่งเสี่ยง ต้องไม่เกิน Appetite — สถานะคำนวณโดย AI Agent</div></div>'+'</div>'+
+    '<div class="page-head"><div><h2>KRI Monitoring</h2><div class="sub">KRI คือสัญญาณล่วงหน้าว่าความเสี่ยงกำลังจะเกิด เทียบกับ Appetite และ Tolerance · ค่ายิ่งสูงยิ่งเสี่ยง · ผลลัพธ์ KPI ดูได้ในหน้า Objectives &amp; KPI</div></div>'+'</div>'+
     toolbar+
     '<div class="card">'+tblBody+'</div>'+
     renderRiskModal();
@@ -659,7 +679,8 @@
   var kbFactor = "ALL"; // KRI panel filter: "ALL" | 0 (ภาพรวม) | factor number — follows the factor opened on the left
   var HIST_MONTHS = (function(){
     var th=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."], out=[], y=2568, m=3;
-    for(var i=0;i<18;i++){ out.push({label:th[m]+" "+String(y).slice(2), q:"Q"+(Math.floor(m/3)+1)+"/"+String(y).slice(2), qEnd:(m%3===2)}); m++; if(m>11){ m=0; y++; } }
+    var A=PRC.ASOF||"2026-09-17", N=(+A.slice(0,4)-2025)*12+(+A.slice(5,7))-3;
+    for(var i=0;i<N;i++){ out.push({label:th[m]+" "+String(y).slice(2), q:"Q"+(Math.floor(m/3)+1)+"/"+String(y).slice(2), qEnd:(m%3===2)}); m++; if(m>11){ m=0; y++; } }
     return out;
   })();
   function hNum(s){ if(!s) return null; var m=/(-?\d[\d,]*(?:\.\d+)?)/.exec(String(s)); return m ? parseFloat(m[1].replace(/,/g,"")) : null; }
@@ -738,7 +759,7 @@
   }
   function histSectionHtml(r){
     var items = [];
-    r.kris.forEach(function(k,i){ if(!kriHasHist(r,k)) return; items.push({key:"kri:"+i, label:k.name, calc:k.calc, st:k.status, k:k, md:function(){ return histModel(r.id+"|"+k.name, k.appetite, k.tolerance, k.current); }, kind:"KRI"}); });
+    r.kris.forEach(function(k,i){ if(!kriHasHist(r,k)) return; items.push({key:"kri:"+i, label:k.name, calc:k.calc, st:k.status, k:k, md:function(){ return kriMd(r,k); }, kind:"KRI"}); });
     (r.kpis||[]).forEach(function(id){ var k=kpiById(id); if(!k) return;
       var thr=kpiThreshold(k.target); if(!thr) return; // no numeric target yet -> nothing to plot
       items.push({key:"kpi:"+id, label:id, md:function(){ var m=histModel(id, thr, "", "—"); m.appStr=thr; return m; }, kind:"KPI", full:k.target}); });
@@ -799,14 +820,15 @@
         });
         return out; })()+'</div>'+
     '</div>';
-    var table = '<div class="tbl-wrap"><table class="hist-tbl"><thead><tr><th>งวด</th>'+pts.map(function(p){ return '<th>'+p.label+'</th>'; }).join('')+'</tr></thead>'+
-      '<tbody><tr><td>ค่า</td>'+pts.map(function(p){ return '<td class="mono">'+hFmt(p.v,md.unit)+'</td>'; }).join('')+'</tr>'+
-      '<tr><td>สถานะ</td>'+pts.map(function(p){ return '<td><i class="rp-dot '+({good:'good',watch:'watch',crit:'crit',pending:'na'})[p.st]+'" title="'+p.st+'"></i></td>'; }).join('')+'</tr></tbody></table></div>';
+    var HST={good:'ผ่าน Appetite',watch:'เฝ้าระวัง',crit:'เกิน Tolerance',pending:'ไม่มีเกณฑ์'};
+    var table = '<details class="hist-tbl-d"'+(histTblOpen?' open':'')+'><summary>ดูค่าเป็นตาราง</summary><div class="tbl-wrap"><table class="hist-tbl hist-v"><thead><tr><th>งวด</th><th>ค่า</th><th>สถานะ</th></tr></thead><tbody>'+
+      pts.map(function(p, i){ return '<tr data-pt="'+i+'"><td>'+p.label+'</td><td class="mono">'+hFmt(p.v,md.unit)+'</td><td><i class="rp-dot '+({good:'good',watch:'watch',crit:'crit',pending:'na'})[p.st]+'"></i> '+HST[p.st]+'</td></tr>'; }).reverse().join('')+
+      '</tbody></table></div></details>';
     return '<div class="hist" id="riskHist">'+
-      '<div class="hist-top"><h4>ตัวชี้วัดความเสี่ยง (KRI)</h4>'+
-        '<div class="view-toggle hist-per"><button type="button" class="view-toggle-btn'+(histPeriod==="m"?' active':'')+'" data-hper="m">'+icon("cal")+'รายเดือน</button><button type="button" class="view-toggle-btn'+(histPeriod==="q"?' active':'')+'" data-hper="q">'+icon("calq")+'รายไตรมาส</button></div></div>'+
+      '<div class="hist-top"><h4>ตัวชี้วัดความเสี่ยง (KRI)</h4><div class="hist-tools">'+kriBtnsHtml(r)+
+        '<div class="view-toggle hist-per"><button type="button" class="view-toggle-btn'+(histPeriod==="m"?' active':'')+'" data-hper="m">'+icon("cal")+'รายเดือน</button><button type="button" class="view-toggle-btn'+(histPeriod==="q"?' active':'')+'" data-hper="q">'+icon("calq")+'รายไตรมาส</button></div></div></div>'+
       '<div class="hist-chips">'+chips+'</div>'+
-      '<div class="hist-sum"><span class="hist-name">'+esc(sel.full||sel.label)+(sel.calc?'<span class="kri-calc">วิธีวัด: '+esc(sel.calc)+'</span>':'')+(sel.kind==="KRI"?'<span class="kri-calc">ค่ายิ่งสูง ยิ่งเสี่ยง — ต้องอยู่ต่ำกว่าเส้น Appetite</span>':'')+'</span>'+
+      '<div class="hist-sum"><span class="hist-name">'+esc(sel.full||sel.label)+(sel.calc?'<span class="kri-calc">วิธีวัด: '+esc(sel.calc)+'</span>':'')+''+(sel.kind==="KRI"?'<span class="kri-calc">ค่ายิ่งสูง ยิ่งเสี่ยง — ต้องอยู่ต่ำกว่าเส้น Appetite</span>':'')+'</span>'+
         '<span class="hist-last"><b class="mono">'+hFmt(last.v,md.unit)+'</b> '+statusPill(last.st==="pending"?"pending":last.st)+
         (prev ? ' <span class="hist-delta '+(better===null?'':better?'up':'down')+'">'+(delta>0?'▲ +':delta<0?'▼ ':'')+(delta===0?'เท่าเดิม':hFmt(delta,md.unit))+' จาก'+(histPeriod==="q"?'ไตรมาส':'เดือน')+'ก่อน</span>' : '')+'</span>'+
         '<span class="hist-thr">'+(sel.kind==="KPI" ? 'เป้าหมาย '+esc(md.appStr) : 'Appetite '+esc(md.appStr||"—")+' · Tolerance '+esc(md.tolStr||"—"))+'</span></div>'+
@@ -815,15 +837,19 @@
       '<div class="hist-note">ข้อมูลจำลองเพื่อแสดงรูปแบบการติดตาม ยังไม่ใช่ข้อมูลจริง'+(sel.kind==="KRI" && md.hasCur ? ' · ค่าล่าสุดตรงกับค่าปัจจุบันในทะเบียน' : '')+' · รายไตรมาสใช้ค่า ณ สิ้นไตรมาส</div>'+
     '</div>';
   }
-  function kriHasHist(r,k){ return histModel(r.id+"|"+k.name, k.appetite, k.tolerance, k.current).ok; }
+  function kriHasHist(r,k){ return kriMd(r,k).ok; }
   function renderRiskModal(){
     if(!selectedRisk) return '';
     var r=RISKS.filter(function(x){ return x.id===selectedRisk; })[0]; if(!r) return '';
     return '<div class="modal-backdrop" id="riskModalBackdrop"><div class="modal-box modal-wide">'+riskModalInner(r)+'</div></div>';
   }
   function riskModalInner(r){
-    return '<button type="button" class="modal-close" id="riskModalClose" aria-label="ปิด">&times;</button>'+
-      riskCardHtml(r, true).replace('class="risk-card"','class="risk-card open"');
+    var card=riskCardHtml(r, true).replace('class="risk-card"','class="risk-card open"');
+    var tabs='<div class="rm-tabs" role="tablist" aria-label="มุมมองความเสี่ยง">'+[["detail","รายละเอียด","shield"],["hist","ประวัติ","history"]].map(function(t){ var on=rmTab===t[0];
+      return '<button type="button" role="tab" aria-selected="'+on+'" class="rm-tab'+(on?' on':'')+'" data-rmtab="'+t[0]+'">'+icon(t[2])+t[1]+'</button>'; }).join('')+'</div>';
+    var i=card.indexOf('<div class="risk-body">');
+    card = rmTab==="hist" ? card.slice(0,i)+tabs+'<div class="risk-body">'+riskHistoryHtml(r)+'</div></div>' : card.slice(0,i)+tabs+card.slice(i);
+    return '<button type="button" class="modal-close" id="riskModalClose" aria-label="ปิด">&times;</button>'+card;
   }
   function rerenderRiskModal(scrollToHist){
     var box=document.querySelector('[id^="page-"]:not([hidden]) #riskModalBackdrop .modal-box'); var r=RISKS.filter(function(x){ return x.id===selectedRisk; })[0];
@@ -842,36 +868,98 @@
     var any=r.factors.some(function(f,j){ return factorAlert(r,j); });
     return any ? factorAlert(r,i) : i===0;
   }
-  function riskActionsHtml(r){
+  /* actions sit with the section they change: KRI buttons in the KRI header, treatment in its header, Audit Trail with the whole risk */
+  function kriBtnsHtml(r){
     if(!currentUser) return '';
     var b=[];
-    if(can("อัปเดตค่า KRI รายเดือน + แนบหลักฐาน", r)) b.push('<button type="button" class="ra-btn primary" data-demo="อัปเดตค่า KRI">'+icon("upload")+'อัปเดตค่า KRI</button>');
-    if(can("ยืนยันค่า KRI ก่อนรายงาน", r)) b.push('<button type="button" class="ra-btn" data-demo="ยืนยันค่า KRI">'+icon("check")+'ยืนยันค่า KRI</button>');
-    if(can("แก้ไขสาเหตุและแนวทางจัดการ", r)) b.push('<button type="button" class="ra-btn" data-demo="แก้ไขแนวทางจัดการ">'+icon("edit")+'แก้ไขแนวทางจัดการ</button>');
-    if(can("ดู Audit Trail", r)) b.push('<button type="button" class="ra-btn" data-demo="Audit Trail">'+icon("history")+'Audit Trail</button>');
-    var who='<span class="ra-who">'+avatarHtml(currentUser)+esc(roleOf().label)+'</span>';
-    var ro = b.length ? '' : '<span class="ra-ro">'+icon("eye")+'ดูอย่างเดียว</span>';
-    return '<div class="rm-actions">'+who+b.join('')+ro+'</div>';
+    if(can("อัปเดตค่า KRI รายเดือน + แนบหลักฐาน", r)) b.push('<button type="button" class="ra-btn sm primary" data-kri-upd="'+r.id+'">'+icon("upload")+'อัปเดตค่า KRI</button>');
+    return b.join('');
   }
+  function actBtnHtml(r){
+    return (currentUser && can("แก้ไขสาเหตุและแนวทางจัดการ", r)) ? '<button type="button" class="ra-btn sm" data-act-edit="'+r.id+'">'+icon("edit")+'แก้ไขสาเหตุและแนวทางจัดการ</button>' : '';
+  }
+  function riskActionsHtml(r){
+    if(!currentUser) return '';
+    var edit = can("อัปเดตค่า KRI รายเดือน + แนบหลักฐาน", r) || can("ตรวจค่า KRI ก่อนส่งส่วนกลาง", r) || can("แก้ไขสาเหตุและแนวทางจัดการ", r);
+    var fp=flowPill(r), cf=can("ตรวจค่า KRI ก่อนส่งส่วนกลาง", r) ? '<button type="button" class="ra-btn sm'+(flowOf(r).state==="submitted"?' primary':'')+'" data-kri-cf="'+r.id+'">'+icon("check")+'ตรวจรายงานประจำเดือน</button>' : '';
+    if(!fp && !cf && edit) return '';
+    return '<div class="rm-actions">'+fp+cf+(edit?'':'<span class="ra-ro">'+icon("eye")+'ดูอย่างเดียว</span>')+'</div>';
+  }
+  /* ---- risk treatment tracking (แนวทางจัดการ): status, due date, owner, monthly log ---- */
+  var ASOF = PRC.ASOF || "2026-09-17";
+  var TH_MON = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  function thDate(iso){ var y=+iso.slice(0,4), m=+iso.slice(5,7), d=+iso.slice(8,10); return d+" "+TH_MON[m-1]+" "+String(y+543).slice(2); }
+  function asofFull(){ return +ASOF.slice(8,10)+" "+TH_MON[+ASOF.slice(5,7)-1]+" "+(+ASOF.slice(0,4)+543); }
+  function dayDiff(a,b){ return Math.round((Date.parse(a)-Date.parse(b))/864e5); }
+  function actState(a){ if(a.status==="done") return "done"; if(a.due<ASOF) return "late"; return a.status==="todo" ? "todo" : "doing"; }
+  var ACT_LBL = {done:"เสร็จ", doing:"กำลังทำ", todo:"ยังไม่เริ่ม", late:"ล่าช้า"};
+  function factorCrit(r, fi){ return r.kris.some(function(k){ return (k.f||0)===fi+1 && k.status==="crit"; }); }
+  function actHtml(r, f, fi, ai){
+    var a=(f.acts||[])[ai], txt=f.responses[ai]; if(!a) return '<li>'+esc(txt)+'</li>';
+    var st=actState(a), log=a.log||[], last=log[log.length-1];
+    var pill='<span class="act-st '+st+'">'+(st==="late" ? 'ล่าช้า '+dayDiff(ASOF,a.due)+' วัน' : ACT_LBL[st]+(st==="doing" && a.pct ? ' '+a.pct+'%' : ''))+'</span>';
+    var warn=(st==="done" && factorCrit(r,fi)) ? '<div class="act-warn">เสร็จแล้ว แต่ KRI ของปัจจัยนี้ยังเกิน Tolerance</div>' : '';
+    var hist=log.length>1 ? '<details class="act-h"><summary>ประวัติ '+log.length+' ครั้ง</summary><ol>'+log.slice().reverse().map(function(u){ return '<li><b>'+thDate(u.d)+'</b> '+esc(u.note)+'</li>'; }).join('')+'</ol></details>' : '';
+    return '<li class="act '+st+'"><div class="act-t">'+esc(txt)+'</div>'+
+      '<div class="act-m">'+pill+'<span>กำหนด '+thDate(a.due)+'</span>'+(a.owner?'<span>'+esc(a.owner)+'</span>':'')+
+        (last ? '<span class="act-u">อัปเดต '+thDate(last.d)+' · '+esc(last.note)+'</span>' : '')+'</div>'+hist+warn+'</li>';
+  }
+  function actLateHtml(f){ var n=(f.acts||[]).filter(function(a){ return actState(a)==="late"; }).length; return n ? '<span class="rfx-st late"><i></i>แนวทางล่าช้า '+n+'</span>' : ''; }
+  function actSummaryCard(list){
+    var c={done:0,doing:0,todo:0,late:0}, lateList=[], ineff=0;
+    list.forEach(function(r){ r.factors.forEach(function(f,fi){ (f.acts||[]).forEach(function(a,ai){
+      var st=actState(a); c[st]++;
+      if(st==="late") lateList.push({r:r, a:a, t:f.responses[ai], d:dayDiff(ASOF,a.due)});
+      if(st==="done" && factorCrit(r,fi)) ineff++;
+    }); }); });
+    var tot=c.done+c.doing+c.todo+c.late; if(!tot) return '';
+    var K=["done","doing","todo","late"];
+    var seg=K.map(function(k){ return c[k] ? '<span class="ab-seg '+k+'" style="flex:'+c[k]+'" title="'+ACT_LBL[k]+' '+c[k]+'"></span>' : ''; }).join('');
+    var leg=K.map(function(k){ return '<span class="ab-k"><i class="'+k+'"></i>'+ACT_LBL[k]+' <b>'+c[k]+'</b></span>'; }).join('');
+    lateList.sort(function(x,y){ return y.d-x.d; });
+    var rows=lateList.slice(0,8).map(function(o){ return '<tr class="rs-row" data-risk="'+o.r.id+'" title="คลิกเพื่อดูความเสี่ยง"><td class="mono rg-id">'+o.r.id+'</td><td>'+esc(o.t)+'</td><td>'+esc(o.a.owner||'')+'</td><td class="mono">'+thDate(o.a.due)+'</td><td class="mono act-late-d">'+o.d+' วัน</td></tr>'; }).join('');
+    return '<div class="card act-card"><div class="card-head"><h3>ความคืบหน้าแนวทางจัดการ ('+tot+' ข้อ)</h3><span class="act-asof">ณ '+thDate(ASOF)+'</span></div>'+
+      '<div class="ab-bar" role="img" aria-label="'+K.map(function(k){ return ACT_LBL[k]+' '+c[k]; }).join(' · ')+'">'+seg+'</div>'+
+      '<div class="ab-leg">'+leg+(ineff ? '<span class="ab-k warn">เสร็จแล้วแต่ KRI ยังเกิน Tolerance <b>'+ineff+'</b></span>' : '')+'</div>'+
+      (rows ? '<div class="rf-lbl" style="margin-top:16px;">ล่าช้า · เรียงตามจำนวนวันที่เลยกำหนด</div><div class="tbl-wrap"><table class="act-tbl"><thead><tr><th>ความเสี่ยง</th><th>แนวทางจัดการ</th><th>ผู้รับผิดชอบ</th><th>กำหนด</th><th>เลยกำหนด</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+        (lateList.length>8 ? '<div class="hint" style="margin-top:6px;">และอีก '+(lateList.length-8)+' ข้อ</div>' : '') : '')+
+    '</div>';
+  }
+  function objBlockHtml(r){ var o=String(r.objective||"").trim(); if(!o) return '';
+    var i=o.indexOf(" — "), lines=(i>=0?o.slice(0,i):o).split(" · "), tg=i>=0?o.slice(i+3).split(" · "):[];
+    function chip(c){ return '<span class="obj2-c mono">'+esc(c)+'</span>'; }
+    var hasCode=lines.every(function(h){ return /^[A-Z]\d\s/.test(h); });
+    var heads = hasCode ? lines.map(function(h){ var m=/^([A-Z]\d)\s+(.*)$/.exec(h); return '<div class="obj2-t">'+chip(m[1])+'<span>'+esc(m[2])+'</span></div>'; }).join('')
+      : '<div class="obj2-t">'+(r.objs||[]).map(chip).join('')+'<span>'+esc(lines.join(' · '))+'</span></div>';
+    var rows='';
+    if(tg.length) rows+='<div class="obj2-dt">เป้าหมาย</div><ul class="obj2-dd">'+tg.map(function(t){ return '<li>'+esc(t)+'</li>'; }).join('')+'</ul>';
+    if(r.kpiOut && r.kpiOut.length) rows+='<div class="obj2-dt">ผล KPI ล่าสุด · '+PERIOD+'</div><ul class="obj2-dd">'+r.kpiOut.map(function(k){ var R={crit:["crit","พลาดเป้า"],watch:["watch","พลาดเป้าเล็กน้อย"],good:["good","ถึงเป้า"]}[k.status]||["pending","รอข้อมูล"], kd=kpiById(k.kpi);
+        return '<li><span class="obj2-kid mono" title="'+escAttr(kd?kd.target:k.kpi)+'">'+esc(k.kpi)+'</span><span>'+esc(k.name)+'</span><b class="mono">'+esc(k.current)+'</b><span class="pill '+R[0]+'">'+R[1]+'</span></li>'; }).join('')+'</ul>';
+    return '<div class="obj2"><div class="obj2-h">'+icon("target")+'เป้าหมายกลยุทธ์ที่เชื่อมโยง</div>'+heads+(rows?'<div class="obj2-body">'+rows+'</div>':'')+'</div>'; }
   function riskCardHtml(r, inModal){
     function krisOf(fn){ var out=[]; r.kris.forEach(function(k,ki){ if((k.f||0)===fn) out.push([k,ki]); }); return out; }
     function stSummary(pairs){
       var c={crit:0,watch:0}; pairs.forEach(function(p){ if(c[p[0].status]!==undefined) c[p[0].status]++; });
       return (c.crit?'<span class="rfx-st crit"><i></i>เกิน Tolerance '+c.crit+'</span>':'')+(c.watch?'<span class="rfx-st watch"><i></i>เฝ้าระวัง '+c.watch+'</span>':'');
     }
-    var ulS='<ul class="rf-ul">';
+    function causeTree(f, i){
+      function actsOf(test){ var out=''; f.responses.forEach(function(t, ai){ if(test((f.acts||[])[ai]||{})) out+=actHtml(r, f, i, ai); }); return out; }
+      var orph=actsOf(function(a){ return a.c==null || !f.causes[a.c]; });
+      return '<div class="rf-tree">'+f.causes.map(function(c, ci){ var acts=actsOf(function(a){ return a.c===ci; });
+          return '<div class="rf-cz"><div class="rf-cause"><span class="rf-ctag">สาเหตุ '+(i+1)+'.'+(ci+1)+'</span><span>'+esc(c)+'</span></div>'+
+            (acts ? '<ul class="rf-ul rf-acts">'+acts+'</ul>' : '<div class="rf-none">ยังไม่มีแนวทางจัดการ</div>')+'</div>'; }).join('')+
+        (orph ? '<div class="rf-cz"><div class="rf-cause o"><span class="rf-ctag">ยังไม่ระบุสาเหตุ</span></div><ul class="rf-ul rf-acts">'+orph+'</ul></div>' : '')+'</div>';
+    }
     var bodyCR = (function(){
           var allOpen = r.factors.every(function(f,i){ return factorIsOpen(r,i); });
           return '<div class="rfx-top"><h4 style="font-size:14px;color:var(--brand-700);margin:0;">ปัจจัยเสี่ยงและแนวทางจัดการ ('+r.factors.length+' ปัจจัย)<span class="rfx-4t" title="กลยุทธ์ตอบสนองความเสี่ยง (4T)">4T: '+esc(r.response)+'</span></h4>'+
-            (inModal ? '<button type="button" class="rfx-all" data-fall="'+(allOpen?'close':'open')+'" data-rid="'+r.id+'">'+(allOpen?'ย่อทั้งหมด':'ขยายทั้งหมด')+'</button>' : '')+'</div>'+
+            (inModal ? '<div class="rfx-tools">'+actBtnHtml(r)+'<button type="button" class="rfx-all" data-fall="'+(allOpen?'close':'open')+'" data-rid="'+r.id+'">'+(allOpen?'ย่อทั้งหมด':'ขยายทั้งหมด')+'</button></div>' : '')+'</div>'+
           '<div class="rf-list">'+r.factors.map(function(f,i){
             var fk=krisOf(i+1), nK=fk.length;
             return '<details class="rfx'+(inModal && kbFactor===i+1?' active':'')+'" data-fkey="'+r.id+':'+i+'"'+(factorIsOpen(r,i)?' open':'')+'>'+
               '<summary class="rfx-h"><span class="rf-no">'+(i+1)+'</span><span class="rfx-name">'+esc(f.name)+
-                '<span class="rfx-meta">'+f.causes.length+' สาเหตุ · '+f.responses.length+' แนวทางจัดการ'+(nK?' · '+nK+' KRI':'')+stSummary(fk)+'</span></span>'+icon("chevd","rfx-chev")+'</summary>'+
-              '<div class="rf-cols">'+
-                '<div><div class="rf-lbl">สาเหตุ</div>'+ulS+f.causes.map(function(c){ return '<li>'+esc(c)+'</li>'; }).join('')+'</ul></div>'+
-                '<div><div class="rf-lbl">แนวทางจัดการ</div>'+ulS+f.responses.map(function(c){ return '<li>'+esc(c)+'</li>'; }).join('')+'</ul></div></div>'+
+                '<span class="rfx-meta">'+f.causes.length+' สาเหตุ · '+f.responses.length+' แนวทางจัดการ'+(nK?' · '+nK+' KRI':'')+stSummary(fk)+actLateHtml(f)+'</span></span>'+icon("chevd","rfx-chev")+'</summary>'+
+              causeTree(f, i)+
               '</details>'; }).join('')+'</div>';
         })();
     var objChips = (r.objs||[]).map(function(c){ return '<span class="rg-obj mono">'+c+'</span>'; }).join('');
@@ -882,10 +970,9 @@
         '<span class="rmeta">'+subName(r.sub)+' · '+esc(r.cat)+' · L'+r.L+'×I'+r.I+'</span>'+
         '<span class="chev">&#9656;</span>'+
       '</div>'+
-      '<div class="risk-body">'+(inModal ? '<div class="rm-grid"><div class="rm-main">' : '')+
-        (inModal ? riskActionsHtml(r) : '')+
-        (r.rmc ? '<div class="rmc-note"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h9l3 3v11H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 9h6M7 12h6M7 15h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>'+esc(r.rmc)+'</span></div>' : '')+
-        '<div class="obj"><b>เป้าหมายกลยุทธ์ที่เชื่อมโยง:</b> '+esc(r.objective)+'</div>'+
+      '<div class="risk-body">'+(inModal ? riskActionsHtml(r)+levelPathHtml(r)+'<div class="rm-grid"><div class="rm-main">' : '')+
+        objBlockHtml(r)+
+        (rmcNoteOf(r) ? '<div class="rmc-note"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h9l3 3v11H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 9h6M7 12h6M7 15h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>'+esc(rmcNoteOf(r))+'</span></div>' : '')+
         '<div class="risk-gov">'+
           (objChips ? '<div><span class="rg-h">Strategic Objective</span>'+objChips+'</div>' : '')+
           (r.kpis ? '<div><span class="rg-h">Corporate KPI ที่เกี่ยวข้อง</span>'+r.kpis.map(function(id){ var k=kpiById(id); return '<span class="rg-kpi mono" title="'+escAttr(k?k.target:id)+'">'+id+'</span>'; }).join('')+'</div>' : '')+
@@ -957,33 +1044,44 @@
   }
 
   /* ---------------- RENDER: RISK PROFILE ---------------- */
+  function riskQMatch(r){ if(!riskQ) return true; var q=riskQ.toLowerCase();
+    return [r.id, r.title, r.owner||"", r.sub].concat(r.factors.map(function(f){ return f.name; })).some(function(t){ return String(t).toLowerCase().indexOf(q)!==-1; }); }
   function renderDetail(){
-    var coList=filteredRisks();
-    var list=coList.filter(function(r){ return inSel(riskLvl, r.level); });
-    var toggle = '<div class="view-toggle">'+
-      '<button type="button" class="view-toggle-btn pv-btn'+(profileView==="objective"?' active':'')+'" data-pview="objective">'+icon("target")+'ตาม Strategic Objective</button>'+
-      '<button type="button" class="view-toggle-btn pv-btn'+(profileView==="list"?' active':'')+'" data-pview="list">'+icon("table")+'ทะเบียนความเสี่ยง</button>'+
-    '</div>';
+    var coList=filteredRisks().filter(riskQMatch);
+    function okLvl(r){ return inSel(riskLvl, r.level); }
+    function okObj(r){ return !riskObjs.length || (r.objs||[]).some(function(c){ return riskObjs.indexOf(c)!==-1; }); }
+    function okCell(r){ return !regCell || (r.L+"-"+r.I)===regCell; }
+    var list=coList.filter(function(r){ return okLvl(r) && okObj(r) && okCell(r); });
     var cnt={"สูงมาก":0,"สูง":0,"ปานกลาง":0,"ต่ำ":0};
-    coList.forEach(function(r){ cnt[r.level]++; });
+    coList.filter(function(r){ return okObj(r) && okCell(r); }).forEach(function(r){ cnt[r.level]++; });
+    var forObj=coList.filter(function(r){ return okLvl(r) && okCell(r); });
+    var cl = regCell ? regCell.split("-") : null;
+    var allObj=[]; registerDomains().forEach(function(d){ d.objs.forEach(function(o){ allObj.push(o.code); }); });
+    var tierChips = [1,2,3].map(function(t){ var codes=allObj.filter(function(c){ return OBJ_TIER[c]===t; }); if(!codes.length) return '';
+      var on=codes.every(function(c){ return riskObjs.indexOf(c)!==-1; }), n=forObj.filter(function(r){ return (r.objs||[]).some(function(c){ return codes.indexOf(c)!==-1; }); }).length;
+      return '<button type="button" class="rf-chip rf-tier'+(on?' on':'')+'" data-rk="tier" data-val="'+t+'" aria-pressed="'+on+'" title="Tier '+t+': '+codes.join(', ')+'">T'+t+'<span class="rf-n">'+n+'</span></button>'; }).join('');
+    var objChips = rkChip('obj','ALL','ทั้งหมด',!riskObjs.length)+tierChips+'<span class="rf-sep" aria-hidden="true"></span>'+registerDomains().map(function(d){ return d.objs.map(function(o){
+        var n=forObj.filter(function(r){ return (r.objs||[]).indexOf(o.code)!==-1; }).length, on=riskObjs.indexOf(o.code)!==-1;
+        return '<button type="button" class="rf-chip rf-obj'+(on?' on':'')+'" data-rk="obj" data-val="'+o.code+'" aria-pressed="'+on+'" title="'+escAttr(o.code+' '+o.title)+'"><i class="rf-dom" style="background:'+d.p.color+'"></i><span class="mono">'+o.code+'</span><span class="rf-n">'+n+'</span></button>'; }).join(''); }).join('');
+    var active=(activeFilter.length>0 && !lockedScope()) || riskLvl.length>0 || riskObjs.length>0 || !!riskQ || !!regCell;
     var toolbar = '<div class="rf tb">'+
-      tbRow('มุมมอง', toggle)+
+      tbRow('ค้นหา', '<label class="rf-search">'+icon("search")+'<span class="sr-only">ค้นหาความเสี่ยง</span><input type="search" id="riskQ" value="'+escAttr(riskQ)+'" placeholder="ค้นหาชื่อความเสี่ยง หรือ Risk Owner" autocomplete="off"></label>')+
       companyRow(function(id){ return scopeRisks().filter(function(r){ return r.sub===id; }).length; })+
-      tbRow('ระดับ', rkChip('lvl','ALL','ทั้งหมด',!riskLvl.length)+["สูงมาก","สูง","ปานกลาง","ต่ำ"].map(function(l){ return rkChip('lvl',l,'<i class="rs-sw '+LVL_CLS[l]+'"></i>'+l,riskLvl.indexOf(l)!==-1,cnt[l]); }).join(''))+
-      tbSum(list.length, scopeRisks().length, 'ประเด็นความเสี่ยง', (activeFilter.length>0 && !lockedScope()) || riskLvl.length>0)+'</div>';
+      tbRow('ระดับ', rkChip('lvl','ALL','ทั้งหมด',!riskLvl.length && !regCell)+["สูงมาก","สูง","ปานกลาง","ต่ำ"].map(function(l){ return rkChip('lvl',l,'<i class="rs-sw '+LVL_CLS[l]+'"></i>'+l,riskLvl.indexOf(l)!==-1,cnt[l]); }).join('')+
+        (regCell ? '<span class="pf-chip">Heat Map L'+cl[0]+' × I'+cl[1]+'<button type="button" data-cell-clear="1" aria-label="ล้างตัวกรอง Heat Map">&times;</button></span>' : ''))+
+      tbRow('Objective', objChips)+
+      (riskObjs.length ? '<div class="rf-objdesc">'+registerDomains().map(function(d){ return d.objs.filter(function(o){ return riskObjs.indexOf(o.code)!==-1; }).map(function(o){
+          return '<div class="rf-od"><i class="rf-dom" style="background:'+d.p.color+'"></i><b class="mono">'+o.code+'</b><span>'+esc(o.title)+' '+tierBadge(o.code)+(OBJ_TIER_NOTE[o.code]?'<span class="rf-why">'+esc(OBJ_TIER_NOTE[o.code])+'</span>':'')+'</span></div>'; }).join(''); }).join('')+'</div>' : '')+
+      tbSum(list.length, scopeRisks().length, 'ประเด็นความเสี่ยง', active)+'</div>';
     var body;
     if(!list.length) body = emptyState('ไม่พบประเด็นความเสี่ยงตามตัวกรองนี้');
-    else if(profileView==="objective") body = renderProfileByObjective(list);
     else {
-      var rl = regCell ? list.filter(function(r){ return (r.L+"-"+r.I)===regCell; }) : list;
-      var cl = regCell ? regCell.split("-") : null;
       body = '<div class="card">'+
-        (regCell ? '<div class="pf-filter">กรองจาก Heat Map: <span class="pf-chip">L'+cl[0]+' × I'+cl[1]+' · '+rl.length+' ประเด็น<button type="button" data-cell-clear="1" aria-label="ล้างตัวกรอง">&times;</button></span></div>' : '')+
-        registerTableHtml(rl)+'<div class="hint" style="margin-top:10px;">เรียงตามคะแนน L×I จากสูงไปต่ำ · คลิกแถวเพื่อดูสาเหตุ แนวทางจัดการ KRI และกราฟประวัติ</div></div>';
+        registerTableHtml(list)+'<div class="hint" style="margin-top:10px;">เรียงตามคะแนน L×I จากสูงไปต่ำ · คลิกแถวเพื่อดูสาเหตุ แนวทางจัดการ KRI และกราฟประวัติ</div></div>';
     }
 
     return ''+
-    '<div class="page-head"><div><h2>Risk Profile</h2><div class="sub">ทะเบียนความเสี่ยงที่อาจทำให้ไม่บรรลุ Strategic Objective และ Corporate KPI — คลิกที่ความเสี่ยงเพื่อดูสาเหตุ แนวทางจัดการ และ KRI</div></div>'+'</div>'+
+    '<div class="page-head"><div><h2>Risk Register</h2><div class="sub">ทะเบียนความเสี่ยงที่อาจทำให้ไม่บรรลุ Strategic Objective และ Corporate KPI — คลิกที่ความเสี่ยงเพื่อดูสาเหตุ แนวทางจัดการ และ KRI</div></div>'+'</div>'+
     toolbar+
     '<div class="panel" id="riskCards">'+body+'</div>'+
     renderRiskModal();
@@ -1019,6 +1117,8 @@
   /* ---------------- APP ---------------- */
   /* ---------------- ICONS (inline SVG, stroke = currentColor) ---------------- */
   var IC_PATHS = {
+    plus:'<path d="M12 5v14M5 12h14"/>',
+    trash:'<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>',
     target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>',
     list:'<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.2" fill="currentColor" stroke="none"/>',
     table:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M3 15h18M9 9.5V20"/>',
@@ -1046,6 +1146,7 @@
     swap:'<path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>',
     eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     sso:'<rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V8a5 5 0 0 1 10 0v3"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/>',
+    dash:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
     history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 3"/>',
     chevd:'<path d="M6 9l6 6 6-6"/>',
     arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
@@ -1125,10 +1226,10 @@
     function cell(v){ if(v==="y") return '<span class="pm-y" title="ได้">'+icon("check")+'</span>'; if(v==="own") return '<span class="pm-p">ที่ได้รับมอบหมาย</span>'; if(v==="mine") return '<span class="pm-p">ความเสี่ยงของตน</span>'; if(v) return '<span class="pm-p">'+esc(v)+'</span>'; return '<span class="pm-n">—</span>'; }
     var head = '<tr><th>สิทธิ์การใช้งาน</th>'+ROLE_ORDER.map(function(k){ return '<th class="'+(k===me?'me':'')+'">'+esc(ROLES[k].label)+'<span class="pm-sub">'+esc(ROLES[k].sub)+'</span></th>'; }).join('')+'</tr>';
     var rows = PERMS.map(function(p){ return '<tr><td>'+esc(p.cap)+'</td>'+ROLE_ORDER.map(function(k){ return '<td class="'+(k===me?'me':'')+'">'+cell(p[k])+'</td>'; }).join('')+'</tr>'; }).join('');
-    var users = (me==="admin") ? '<div class="card"><h3 style="display:flex;align-items:center;gap:8px;">'+icon("users")+'ผู้ใช้ในระบบ <span class="ex-tag">ตัวอย่าง</span></h3>'+
+    var users = (me==="admin") ? '<div class="card"><h3 style="display:flex;align-items:center;gap:8px;">'+icon("users")+'ผู้ใช้ในระบบ</h3>'+
       '<div class="tbl-wrap"><table><thead><tr><th>ผู้ใช้</th><th>บทบาท</th><th>ขอบเขต</th><th>สถานะ</th></tr></thead><tbody>'+
-      DEMO_USERS.map(function(u){ return '<tr><td><span style="display:inline-flex;align-items:center;gap:8px;">'+avatarHtml(u)+esc(u.name)+'</span></td><td>'+esc(ROLES[u.role].label)+' <span style="color:var(--ink-faint);font-size:12.5px;">· '+esc(ROLES[u.role].sub)+'</span></td><td>'+esc(u.demo)+'</td><td>'+'<span class="pill good">ใช้งาน</span>'+'</td></tr>'; }).join('')+
-      '</tbody></table></div><div style="margin-top:12px;"><button type="button" class="ra-btn primary" data-demo="เชิญผู้ใช้">'+icon("user")+'เชิญผู้ใช้</button></div></div>' : '';
+      DEMO_USERS.map(function(u){ return '<tr><td><span style="display:inline-flex;align-items:center;gap:8px;">'+avatarHtml(u)+esc(u.name)+'</span></td><td>'+esc(ROLES[u.role].label)+' <span style="color:var(--ink-faint);font-size:12.5px;">· '+esc(ROLES[u.role].sub)+'</span></td><td>'+esc(u.demo)+'</td><td>'+'<span class="pill good">ใช้งาน</span>'+'</td></tr>'; }).join('')+invitedRows()+
+      '</tbody></table></div><div style="margin-top:12px;"><button type="button" class="ra-btn primary" data-invite="1">'+icon("user")+'เชิญผู้ใช้</button></div></div>' : '';
     return ''+
     '<div class="page-head"><div><h2>Roles &amp; Access</h2><div class="sub">บทบาทผู้ใช้ ขอบเขตข้อมูล และสิทธิ์การใช้งานของระบบ — ไฮไลต์คือบทบาทที่คุณเข้าสู่ระบบอยู่</div></div></div>'+
     '<div class="acc-roles">'+cards+'</div>'+
@@ -1138,33 +1239,36 @@
     '<div class="card"><h3>หลักการออกแบบการเข้าถึง</h3><div class="acc-notes">'+
       '<div>'+icon("sso")+'<span><b>SSO + MFA</b> ใช้บัญชีองค์กรเดิม ไม่ต้องจำรหัสผ่านใหม่ และหมดเวลาการใช้งานอัตโนมัติเมื่อไม่ได้ใช้งาน</span></div>'+
       '<div>'+icon("layers")+'<span><b>สิทธิ์ผูกกับความเสี่ยงและบริษัท</b> Risk Owner เห็นเฉพาะความเสี่ยงที่ตนเป็นเจ้าของ Risk Coordinator เห็นเฉพาะความเสี่ยงหรือบริษัทย่อยที่ได้รับมอบหมาย</span></div>'+
-      '<div>'+icon("check")+'<span><b>แยกผู้บันทึกกับผู้ยืนยัน</b> Risk Coordinator บันทึกค่า KRI → Risk Owner ยืนยัน → Admin ตรวจทานและรวบรวม → ผู้บริหารของกลุ่มทบทวน → เสนอคณะกรรมการฯ ในที่ประชุม</span></div>'+
+      '<div>'+icon("check")+'<span><b>แยกผู้บันทึกกับผู้ตรวจ</b> Risk Owner บันทึกค่า KRI → Risk Coordinator ตรวจ → Risk ส่วนกลางวิเคราะห์และรวบรวม → ผู้บริหารของกลุ่มทบทวน → เสนอคณะกรรมการฯ ในที่ประชุม</span></div>'+
       '<div>'+icon("history")+'<span><b>Audit Trail</b> ทุกการแก้ไขเก็บผู้แก้ วันเวลา ค่าเดิม และค่าใหม่ ให้ Internal Audit ตรวจย้อนหลังได้</span></div>'+
     '</div></div>';
   }
 
   var PAGES = [
-    {id:"overview", label:"Objective & KPI", icon:"flag", render:renderOverview},
-    {id:"matrix", label:"Risk Summary", icon:"heat", render:renderMatrix},
-    {id:"detail", label:"Risk Profile", icon:"shield", render:renderDetail},
-    {id:"kri", label:"KRI Monitoring", icon:"pulse", render:renderKri},
+    {id:"matrix", label:"Home", icon:"dash", render:renderMatrix},
+    {id:"overview", label:"Objectives & KPI", icon:"flag", render:renderOverview},
+    {id:"detail", label:"Risk Register", icon:"shield", render:renderDetail, grp:"risk", desc:"ทะเบียนความเสี่ยง สาเหตุ และแนวทางจัดการ"},
+    {id:"kri", label:"KRI Monitoring", icon:"pulse", render:renderKri, grp:"risk", desc:"สัญญาณเตือนล่วงหน้า อัปเดตรายเดือน"},
+    {id:"review", label:"Quarterly Review", icon:"calq", render:renderReview},
+    {id:"yearly", label:"Yearly Review", icon:"cal", render:renderYearly},
+    {id:"revision", label:"Audit Trail", icon:"history", render:renderRevision, nav:false},
     {id:"access", label:"Roles & Access", icon:"key", render:renderAccess, nav:false}
   ];
   // ร่างรายงาน RMC (renderReport) เอาไว้ก่อนตามที่ผู้ใช้แจ้ง — ฟังก์ชันยังอยู่ในโค้ด พร้อมเพิ่มกลับเข้า PAGES ภายหลัง
 
-  var FILTERABLE = ["matrix","kri","detail"];
+  var FILTERABLE = ["matrix","kri","detail","revision","review","yearly"];
   var tabnav=document.getElementById("tabnav");
   var panels=document.getElementById("panels");
 
   /* multi-page: each page is its own HTML file; shared state travels through sessionStorage */
-  var PAGE_FILE = {overview:"index.html", matrix:"summary.html", detail:"profile.html", kri:"kri.html", access:"access.html"};
-  var CUR = (window.PRC_PAGE && PAGE_FILE[window.PRC_PAGE]) ? window.PRC_PAGE : "overview";
-  var STATE_KEYS = ["activeFilter","riskLvl","kriSt","profileView","regCell","overviewView","regFilter","cmLevel","histPeriod"];
-  function stateGet(){ return {activeFilter:activeFilter, riskLvl:riskLvl, kriSt:kriSt, profileView:profileView, regCell:regCell, overviewView:overviewView, regFilter:regFilter, cmLevel:cmLevel, histPeriod:histPeriod}; }
+  var PAGE_FILE = {matrix:"index.html", overview:"objectives.html", detail:"register.html", kri:"kri.html", review:"review.html", yearly:"yearly.html", revision:"revision.html", access:"access.html"};
+  var CUR = (window.PRC_PAGE && PAGE_FILE[window.PRC_PAGE]) ? window.PRC_PAGE : "matrix";
+  var STATE_KEYS = ["activeFilter","riskLvl","kriSt","regCell","overviewView","regFilter","cmLevel","histPeriod","riskObjs","riskQ","kriView","audF","revA","revB","revView","rvQ","rvStep","rvF3","yrStep"];
+  function stateGet(){ return {activeFilter:activeFilter, riskLvl:riskLvl, kriSt:kriSt, regCell:regCell, overviewView:overviewView, regFilter:regFilter, cmLevel:cmLevel, histPeriod:histPeriod, riskObjs:riskObjs, riskQ:riskQ, kriView:kriView, audF:audF, revA:revA, revB:revB, revView:revView, rvQ:rvQ, rvStep:rvStep, rvF3:rvF3, yrStep:yrStep}; }
   function saveState(){ try{ sessionStorage.setItem("prc-state", JSON.stringify(stateGet())); }catch(err){} }
   function restoreState(){ var st=null; try{ st=JSON.parse(sessionStorage.getItem("prc-state")||"null"); }catch(err){} if(!st) return;
     if(Array.isArray(st.activeFilter)) activeFilter=st.activeFilter; if(Array.isArray(st.riskLvl)) riskLvl=st.riskLvl; if(Array.isArray(st.kriSt)) kriSt=st.kriSt;
-    if(st.profileView) profileView=st.profileView; if(st.regCell!==undefined) regCell=st.regCell; if(st.overviewView) overviewView=st.overviewView;
+    if(Array.isArray(st.riskObjs)) riskObjs=st.riskObjs; if(typeof st.riskQ==="string") riskQ=st.riskQ; if(st.kriView) kriView=st.kriView; if(st.audF) audF=st.audF; if(st.revA) revA=st.revA; if(st.revB) revB=st.revB; if(st.revView) revView=st.revView; if(st.rvQ && qById(st.rvQ)) rvQ=st.rvQ; if(st.rvStep) rvStep=+st.rvStep; if(st.rvF3) rvF3=st.rvF3; if(st.yrStep) yrStep=+st.yrStep; if(st.regCell!==undefined) regCell=st.regCell; if(st.overviewView) overviewView = st.overviewView==="risk" ? "table" : st.overviewView;
     if(st.regFilter) regFilter=st.regFilter; if(st.cmLevel) cmLevel=st.cmLevel; if(st.histPeriod) histPeriod=st.histPeriod;
     if(lockedScope()) activeFilter=[lockedScope()]; }
   function setPending(p){ try{ sessionStorage.setItem("prc-pending", JSON.stringify(p)); }catch(err){} }
@@ -1186,6 +1290,7 @@
 
   function rerenderFilterable(){
     if(lockedScope()) activeFilter=[lockedScope()];
+    if(CUR==="overview" && overviewView==="risk"){ var ov=document.getElementById("page-overview"); if(ov){ ov.innerHTML=renderOverview(); cmApply(); } }
     FILTERABLE.forEach(function(id){
       var el=document.getElementById("page-"+id);
       if(el) el.innerHTML = PAGES.filter(function(p){return p.id===id;})[0].render();
@@ -1211,7 +1316,13 @@
     e.preventDefault(); goToPage(btn.getAttribute("data-page"));
   });
 
+  panels.addEventListener("input", function(e){
+    if(e.target.id!=="riskQ") return;
+    var pos=e.target.selectionStart; riskQ=e.target.value.trim()?e.target.value:""; rerenderFilterable();
+    var q=document.getElementById("riskQ"); if(q){ q.value=e.target.value; q.focus(); try{ q.setSelectionRange(pos,pos); }catch(err){} }
+  });
   panels.addEventListener("change", function(e){
+    if(e.target.id==="revA" || e.target.id==="revB"){ if(e.target.id==="revA") revA=e.target.value; else revB=e.target.value; rerenderFilterable(); var rs=document.getElementById(e.target.id); if(rs) rs.focus(); return; }
     if(e.target.id==="histSelect"){ histSel=e.target.value; rerenderRiskModal(false); var hs2=document.getElementById("histSelect"); if(hs2) hs2.focus(); return; }
     var sel=e.target.closest(".company-filter");
     if(!sel) return;
@@ -1300,6 +1411,12 @@
     tip.style.left=Math.max(4, Math.min(x-tip.offsetWidth/2, br.width-tip.offsetWidth-4))+"px"; tip.style.top=Math.max(0,y-tip.offsetHeight-6)+"px";
   });
   panels.addEventListener("mouseout", function(e){ var h=e.target.closest && e.target.closest(".hist-hit"); if(h){ var t=h.closest(".hist-chart").querySelector(".hist-tip"); if(t) t.hidden=true; } });
+  var histTblOpen = false;
+  document.addEventListener("toggle", function(e){ if(e.target.classList && e.target.classList.contains("hist-tbl-d")) histTblOpen = e.target.open; }, true);
+  /* history table row ↔ chart point: hovering a row shows that point's tooltip */
+  function histHit(tr){ var box=tr.closest(".hist"); return box ? box.querySelectorAll(".hist-hit")[+tr.getAttribute("data-pt")] : null; }
+  panels.addEventListener("mouseover", function(e){ var tr=e.target.closest && e.target.closest(".hist-v tr[data-pt]"); if(!tr) return; var h=histHit(tr); if(h){ h.dispatchEvent(new MouseEvent("mouseover",{bubbles:true})); h.previousSibling && h.previousSibling.classList.add("on"); } });
+  panels.addEventListener("mouseout", function(e){ var tr=e.target.closest && e.target.closest(".hist-v tr[data-pt]"); if(!tr || (e.relatedTarget && tr.contains(e.relatedTarget))) return; var h=histHit(tr); if(h){ h.dispatchEvent(new MouseEvent("mouseout",{bubbles:true})); h.previousSibling && h.previousSibling.classList.remove("on"); } });
   function kpiLineFrom(e){ return e.target.closest && e.target.closest(".cm .cm-kpi[data-kpi]"); }
   panels.addEventListener("mouseover", function(e){ var b=kpiLineFrom(e); if(b && !e.target.closest(".cm-dots")){ clearCross(); highlightKpi(b.getAttribute("data-kpi")); } });
   panels.addEventListener("mouseout", function(e){ var b=kpiLineFrom(e); if(b && !(e.relatedTarget && b.contains(e.relatedTarget))) clearKpiHighlight(); });
@@ -1364,33 +1481,45 @@
       rerenderRiskModal(true); return; }
     var hp=e.target.closest("[data-hper]");
     if(hp){ histPeriod=hp.getAttribute("data-hper"); rerenderRiskModal(false); return; }
+    var rmt=e.target.closest("[data-rmtab]");
+    if(rmt){ rmTab=rmt.getAttribute("data-rmtab"); rerenderRiskModal(false); var tb=document.querySelector('[data-rmtab="'+rmTab+'"]'); if(tb) tb.focus(); return; }
+    var rvv=e.target.closest("[data-rvview]");
+    if(rvv){ revView=rvv.getAttribute("data-rvview"); rerenderFilterable(); return; }
     var rk=e.target.closest("[data-risk]");
-    if(rk){ selectedRisk=rk.getAttribute("data-risk"); histSel=rk.getAttribute("data-hsel")||"kri:0";
+    if(rk){ if(rk.getAttribute("data-risk")!==selectedRisk) rmTab="detail"; selectedRisk=rk.getAttribute("data-risk"); histSel=rk.getAttribute("data-hsel")||"kri:0";
       var rsel=RISKS.filter(function(x){ return x.id===selectedRisk; })[0];
       kbFactor = (!rk.hasAttribute("data-hsel") && rsel && rsel.kris.some(function(k){ return k.core; })) ? "CORE" : "ALL"; rerenderFilterable();
       if(rk.hasAttribute("data-hsel") && window.innerWidth<=1100){ var hh=document.querySelector('[id^="page-"]:not([hidden]) #riskHist'); if(hh) hh.scrollIntoView({block:"start"}); }
       return; }
     if(e.target.closest("#riskModalClose")){ selectedRisk=null; rerenderFilterable(); return; }
 
+    if(e.target.closest("[data-goto-crit]")){ kriSt=["crit"]; kriView="now"; goToPage("kri"); return; }
+    var kv=e.target.closest("[data-kview]");
+    if(kv){ kriView=kv.getAttribute("data-kview"); rerenderFilterable(); return; }
+    var aum=e.target.closest("[data-aud-more]");
+    if(aum){ audLimit+=60; rerenderFilterable(); return; }
     var pv=e.target.closest("[data-pview]");
     if(pv){ profileView=pv.getAttribute("data-pview"); regCell=null; rerenderFilterable(); return; }
     var go=e.target.closest("[data-goto-obj]");
     if(go){
       var oc=go.getAttribute("data-goto-obj");
-      profileView="objective"; activeFilter=[]; riskLvl=[]; if(lockedScope()) activeFilter=[lockedScope()];
-      setPending({page:"detail", t:"obj", code:oc});
-      if(CUR==="detail"){ rerenderFilterable(); runPending(); } else goToPage("detail");
+      riskObjs=[oc]; riskQ=""; riskLvl=[]; regCell=null;
+      if(CUR==="detail"){ rerenderFilterable(); window.scrollTo(0,0); } else goToPage("detail");
       return;
     }
 
     var rk=e.target.closest("[data-rk]");
     if(rk){
       var kk=rk.getAttribute("data-rk"), vv=rk.getAttribute("data-val");
-      if(kk==="clear"){ if(!lockedScope()) activeFilter=[]; riskLvl=[]; kriSt=[]; }
+      if(kk==="clear"){ if(!lockedScope()) activeFilter=[]; riskLvl=[]; kriSt=[]; riskObjs=[]; riskQ=""; }
+      else if(kk==="obj"){ riskObjs = toggleSel(riskObjs, vv); }
+      else if(kk==="tier"){ var tc=Object.keys(OBJ_TIER).filter(function(c){ return OBJ_TIER[c]===+vv; });
+        riskObjs = tc.every(function(c){ return riskObjs.indexOf(c)!==-1; }) ? riskObjs.filter(function(c){ return tc.indexOf(c)===-1; }) : riskObjs.concat(tc.filter(function(c){ return riskObjs.indexOf(c)===-1; })); }
+      else if(kk==="aud"){ audF=vv; audLimit=60; }
       else if(kk==="co"){ activeFilter = toggleSel(activeFilter, vv); }
-      else if(kk==="lvl"){ riskLvl = toggleSel(riskLvl, vv); }
+      else if(kk==="lvl"){ riskLvl = toggleSel(riskLvl, vv); if(vv==="ALL") regCell=null; }
       else if(kk==="st"){ kriSt = toggleSel(kriSt, vv); }
-      regCell=null; rerenderFilterable(); return;
+      if(kk!=="lvl" && kk!=="obj" && kk!=="co" && kk!=="tier") regCell=null; rerenderFilterable(); return;
     }
     var rf=e.target.closest("[data-rf]");
     if(rf){
@@ -1479,6 +1608,9 @@
     var dm=e.target.closest("[data-demo]"); if(dm){ toast(dm.getAttribute("data-demo")+" — ต้นแบบ: จะบันทึกได้เมื่อเชื่อมฐานข้อมูลในเฟสถัดไป"); return; }
   });
   document.addEventListener("keydown", function(e){
+    if(e.key==="Escape" && dlg){ closeDlg(); return; }
+    if(e.key==="Escape" && actEdit && actEdit.mv){ var mb=document.querySelector('#aeRoot [data-ae-mv="'+actEdit.mv+'"]'); actEdit.mv=null; keepScroll(renderActEditor); mb=document.querySelector('#aeRoot .ae2-mv'); if(mb) mb.focus(); return; }
+    if(e.key==="Escape" && actEdit){ closeActEditor(); return; }
     if(e.key==="Escape" && userMenuOpen){ userMenuOpen=false; renderUserSlot(); var c=document.getElementById("userChip"); if(c) c.focus(); return; }
     if(e.key==="Escape" && selectedRisk!==null){ selectedRisk=null; rerenderFilterable(); return; }
     if(e.key==="Escape" && (selectedCompany!==null || selectedKpi!==null)){
@@ -1492,7 +1624,8 @@
   var LIBS = {
     xlsx:"https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js",
     h2c:"https://cdn.jsdelivr.net/npm/html2canvas-pro@2.4.5/dist/html2canvas-pro.min.js",
-    pdf:"https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+    pdf:"https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+    pptx:"https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"
   };
   var libP = {};
   function loadLib(k){
@@ -1538,7 +1671,7 @@
       var widths=[16,8,9,42,6,12,11,50,64,24].concat(cols.map(function(){ return 6.5; }));
       ws.columns = widths.map(function(w){ return {width:w}; });
       ws.getCell("A1").value="ทะเบียนคุม KPI (KPI Register) — PRECISE"; ws.getCell("A1").font={name:"Tahoma", size:14, bold:true, color:{argb:NAVY}};
-      ws.getCell("A2").value="ข้อมูล ณ 17 ก.ย. 2569 · ส่งออกเมื่อ "+beDate()+" · ตัวกรอง: "+regFilterText(); ws.getCell("A2").font={name:"Tahoma", size:10, color:{argb:"FF5B6472"}};
+      ws.getCell("A2").value="ข้อมูล ณ "+asofFull()+" · ส่งออกเมื่อ "+beDate()+" · ตัวกรอง: "+regFilterText(); ws.getCell("A2").font={name:"Tahoma", size:10, color:{argb:"FF5B6472"}};
       var hr=ws.getRow(4); hr.values=head; hr.height=22;
       hr.eachCell(function(c, i){ c.font={name:"Tahoma", size:10, bold:true, color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern", pattern:"solid", fgColor:{argb:NAVY}}; c.alignment={vertical:"middle", horizontal:i>10?"center":"left", wrapText:true}; box(c); });
       var r=5, n=0;
@@ -1590,7 +1723,7 @@
     Promise.all([loadLib("h2c"), loadLib("pdf")]).then(function(){
       var page=document.getElementById("page-overview"); if(!page) throw new Error("page");
       sheet=document.createElement("div"); sheet.className="pdf-sheet";
-      sheet.innerHTML='<div class="pdf-head"><img src="'+LOGO_V+'" alt=""><div><h2>ทะเบียนคุม KPI (KPI Register)</h2><div>ข้อมูล ณ 17 ก.ย. 2569 · ส่งออกเมื่อ '+beDate()+' · ตัวกรอง: '+esc(regFilterText())+'</div></div></div>';
+      sheet.innerHTML='<div class="pdf-head"><img src="'+LOGO_V+'" alt=""><div><h2>ทะเบียนคุม KPI (KPI Register)</h2><div>ข้อมูล ณ '+asofFull()+' · ส่งออกเมื่อ '+beDate()+' · ตัวกรอง: '+esc(regFilterText())+'</div></div></div>';
       var reg=page.querySelector(".cm"); reg=reg && reg.closest(".card"); if(!reg) throw new Error("register");
       var rc=reg.cloneNode(true); var ch=rc.querySelector(".card-head"); if(ch) ch.remove(); sheet.appendChild(rc);
       sheet.querySelectorAll(".dom-detail, .cm-colband, .modal-backdrop, .cm-lv-m").forEach(function(x){ x.remove(); });
@@ -1629,7 +1762,1340 @@
     if(ex.getAttribute("data-export")==="xlsx") exportXlsx(); else exportPdf();
   });
 
+  /* ---------------- EDIT: แนวทางจัดการ (prototype — saved in this browser tab only) ---------------- */
+  var actEdit = null; // {rid, f:[{name, items:[{text, owner, due, status, pct, log, note}]}]}
+  var AE_ST = [["todo","ยังไม่เริ่ม"],["doing","กำลังทำ"],["done","เสร็จ"]];
+  function aeRoot(){ var el=document.getElementById("aeRoot"); if(!el){ el=document.createElement("div"); el.id="aeRoot"; document.body.appendChild(el); } return el; }
+  function openActEditor(rid){
+    var r=RISKS.filter(function(x){ return x.id===rid; })[0]; if(!r) return;
+    actEdit={rid:rid, f:r.factors.map(function(f){
+      var causes=(f.causes||[]).map(function(t){ return {text:t, items:[]}; }), orphans=[];
+      f.responses.forEach(function(t,i){ var a=(f.acts||[])[i]||{};
+        var it={text:t, owner:a.owner||r.owner||"", due:a.due||ASOF, status:a.status||"todo", pct:a.pct||"", log:(a.log||[]).slice(), note:""};
+        if(a.c!=null && causes[a.c]) causes[a.c].items.push(it); else orphans.push(it); });
+      return {name:f.name, causes:causes, orphans:orphans}; }), msg:null, sel:null, open:null};
+    renderActEditor(); var first=document.querySelector("#aeRoot textarea"); if(first) first.focus();
+  }
+  function closeActEditor(){ actEdit=null; aeRoot().innerHTML=""; document.body.style.overflow = selectedRisk ? "hidden" : ""; var b=document.querySelector("[data-act-edit]"); if(b) b.focus(); }
+  function aeList(fi, ci){ var f=actEdit.f[fi]; return ci==="o" ? f.orphans : f.causes[+ci].items; }
+  function aeItem(key){ var p=key.split(":"); return aeList(+p[0], p[1])[+p[2]]; }
+  /* layout: left = ปัจจัย > สาเหตุ (pick one) · right = that cause + its actions as compact rows; one row open for editing */
+  function aeSt(it){ if(it.status==="done") return ["done","เสร็จ"]; if(it.due<ASOF) return ["late","ล่าช้า "+dayDiff(ASOF,it.due)+" วัน"]; return it.status==="doing" ? ["doing","กำลังทำ"] : ["todo","ยังไม่เริ่ม"]; }
+  function aeSelList(){ var s=actEdit.sel, f=actEdit.f[s.fi]; if(!f) return null; return s.ci==="o" ? f.orphans : (f.causes[s.ci] ? f.causes[s.ci].items : null); }
+  function aeFixSel(){ var s=actEdit.sel;
+    if(s && actEdit.f[s.fi] && (s.ci==="o" ? actEdit.f[s.fi].orphans.length : actEdit.f[s.fi].causes[s.ci])) return;
+    for(var i=0;i<actEdit.f.length;i++){ var f=actEdit.f[i]; if(f.causes.length){ actEdit.sel={fi:i, ci:0}; return; } if(f.orphans.length){ actEdit.sel={fi:i, ci:"o"}; return; } }
+    actEdit.sel={fi:0, ci:0}; }
+  function aeMoveMenu(id, fi, ci){
+    return '<div class="ae2-mvmenu" role="menu" aria-label="ย้ายไปสาเหตุ">'+actEdit.f.map(function(f, x){
+      return '<div class="ae2-mvf">'+(x+1)+'. '+esc(f.name)+'</div>'+f.causes.map(function(c, y){ var here=x===fi && String(y)===String(ci);
+        return '<button type="button" role="menuitem" class="ae2-mvi'+(here?' here':'')+'"'+(here?' disabled':' data-ae-mvto="'+id+'|'+x+':'+y+'"')+'><span class="n">'+(x+1)+'.'+(y+1)+'</span><span>'+esc(String(c.text).trim()||'สาเหตุใหม่')+'</span>'+(here?'<em>อยู่ที่นี่</em>':'')+'</button>'; }).join('');
+    }).join('')+'</div>';
+  }
+  function aeRowHtml(fi, ci, ai, it){
+    var id=fi+':'+ci+':'+ai, k=fi+'-'+ci+'-'+ai, st=aeSt(it), open=actEdit.open===id, last=it.log[it.log.length-1];
+    var pill='<span class="act-st ae2-pill '+st[0]+'">'+st[1]+'</span>';
+    if(!open){
+      var pct=it.status==="doing" && it.pct!=="" ? '<span class="ae2-pct"><span class="ae2-bar"><i style="width:'+Math.max(0,Math.min(100,+it.pct))+'%"></i></span>'+(+it.pct)+'%</span>' : '';
+      return '<button type="button" class="ae2-row" data-ae-open="'+id+'" aria-expanded="false">'+pill+
+        '<span class="ae2-tx"><span class="ae2-t">'+(String(it.text).trim() ? esc(it.text) : '<em>แนวทางใหม่</em>')+'</span>'+
+        '<span class="ae2-m">'+(it.owner?'<span>'+esc(it.owner)+'</span>':'')+'<span>กำหนด '+thDate(it.due)+'</span>'+pct+'</span></span>'+icon("chevd","ae2-chev")+'</button>';
+    }
+    return '<div class="ae2-open">'+
+      '<div class="ae2-top"><label class="sr-only" for="ae-'+k+'-text">แนวทางจัดการ</label><textarea class="ae-in" id="ae-'+k+'-text" data-ae="'+id+':text" rows="1" placeholder="แนวทางจัดการ">'+esc(it.text)+'</textarea>'+
+        '<button type="button" class="ae2-fold" data-ae-open="'+id+'" aria-expanded="true" aria-label="ย่อ">'+icon("chevd","ae2-chev up")+'</button></div>'+
+      '<div class="ae-grid">'+
+        '<label class="ae-f1"><span>ผู้รับผิดชอบ</span><input class="ae-in" id="ae-'+k+'-owner" data-ae="'+id+':owner" value="'+escAttr(it.owner)+'"></label>'+
+        '<label class="ae-f1"><span>กำหนดเสร็จ</span><input class="ae-in" type="date" id="ae-'+k+'-due" data-ae="'+id+':due" value="'+escAttr(it.due)+'"></label>'+
+        '<div class="ae-f1"><span id="ae-'+k+'-st">สถานะ</span><div class="ae-seg" role="radiogroup" aria-labelledby="ae-'+k+'-st">'+AE_ST.map(function(o){ var on=it.status===o[0]; return '<button type="button" role="radio" aria-checked="'+on+'" class="'+(on?'on':'')+'" data-ae-st="'+id+':'+o[0]+'">'+o[1]+'</button>'; }).join('')+'</div></div>'+
+        '<label class="ae-f1 ae-pct"><span>คืบหน้า %</span><input class="ae-in" type="number" min="0" max="100" step="5" id="ae-'+k+'-pct" data-ae="'+id+':pct" value="'+escAttr(it.status==="done"?100:it.pct)+'"'+(it.status==="doing"?'':' disabled')+'></label>'+
+      '</div>'+
+      '<label class="ae-f1 ae-note"><span>บันทึกความคืบหน้าเดือนนี้'+(last?' <em>ล่าสุด '+thDate(last.d)+' · '+esc(last.note)+'</em>':'')+'</span><input class="ae-in" id="ae-'+k+'-note" data-ae="'+id+':note" value="'+escAttr(it.note)+'" placeholder="เช่น ติดตั้งเครื่องจักรแล้ว 3 จาก 5 เครื่อง"></label>'+
+      '<div class="ae2-acts"><button type="button" class="ae2-mv" data-ae-mv="'+id+'" aria-expanded="'+(actEdit.mv===id)+'">'+icon("arrow")+'ย้ายไปสาเหตุอื่น</button><button type="button" class="ae2-del" data-ae-del="'+id+'">ลบแนวทางนี้</button></div>'+
+      (actEdit.mv===id ? aeMoveMenu(id, fi, ci) : '')+
+    '</div>';
+  }
+  function renderActEditor(){
+    if(!actEdit){ aeRoot().innerHTML=""; return; }
+    var r=RISKS.filter(function(x){ return x.id===actEdit.rid; })[0]; aeFixSel(); var s=actEdit.sel;
+    function navItem(fi, ci, label, n, items){
+      var on=s.fi===fi && String(s.ci)===String(ci), late=items.some(function(it){ return aeSt(it)[0]==="late"; });
+      return '<button type="button" class="ae2-ci'+(on?' on':'')+'" data-ae-sel="'+fi+':'+ci+'" aria-current="'+on+'"><span class="n">'+n+'</span><span class="t">'+label+'</span><span class="c'+(late||!items.length?' lt':'')+'">'+items.length+'</span></button>';
+    }
+    var nav=actEdit.f.map(function(f, fi){
+      return '<div class="ae2-fac"><span class="rf-no">'+(fi+1)+'</span><span>'+esc(f.name)+'</span></div>'+
+        f.causes.map(function(c, ci){ return navItem(fi, ci, String(c.text).trim() ? esc(c.text) : '<em>สาเหตุใหม่</em>', (fi+1)+'.'+(ci+1), c.items); }).join('')+
+        (f.orphans.length ? navItem(fi, "o", '<em>ยังไม่ระบุสาเหตุ</em>', '–', f.orphans) : '')+
+        '<button type="button" class="ae2-add c" data-ae-cadd="'+fi+'">'+icon("plus")+'เพิ่มสาเหตุ</button>';
+    }).join('');
+    var f=actEdit.f[s.fi], list=aeSelList()||[], pane='';
+    if(f){
+      pane='<div class="ae2-crumb"><span class="rf-no">'+(s.fi+1)+'</span>'+esc(f.name)+'</div>'+
+        (s.ci==="o" ? '<div class="ae2-clab"><span class="ae2-ctag">ยังไม่ระบุสาเหตุ</span></div><div class="ae2-hint">คลิกแนวทางแต่ละข้อ แล้วกด “ย้ายไปสาเหตุอื่น”</div>'
+          : '<div class="ae2-clab"><span class="ae2-ctag">สาเหตุ '+(s.fi+1)+'.'+(s.ci+1)+'</span><button type="button" class="ae2-lnk" data-ae-cdel="'+s.fi+':'+s.ci+'">ลบสาเหตุ</button></div>'+
+            '<label class="sr-only" for="aec-'+s.fi+'-'+s.ci+'">สาเหตุ '+(s.ci+1)+'</label><textarea class="ae2-ctext" id="aec-'+s.fi+'-'+s.ci+'" data-ae-c="'+s.fi+':'+s.ci+'" rows="1" placeholder="พิมพ์สาเหตุ">'+esc(f.causes[s.ci].text)+'</textarea>')+
+        '<div class="ae2-sec">แนวทางจัดการ <span class="rf-n">'+list.length+'</span>'+(s.ci==="o"?'':'<button type="button" class="ae2-add" data-ae-add="'+s.fi+':'+s.ci+'">'+icon("plus")+'เพิ่มแนวทางจัดการ</button>')+'</div>'+
+        (list.length ? list.map(function(it, ai){ return aeRowHtml(s.fi, s.ci, ai, it); }).join('') : '<div class="ae2-empty">ยังไม่มีแนวทางจัดการสำหรับสาเหตุนี้</div>');
+    }
+    var msg = actEdit.msg ? '<div class="dl-alert ae2-msg '+(actEdit.msg.err?'crit':'good')+'" role="'+(actEdit.msg.err?'alert':'status')+'">'+icon(actEdit.msg.err?"flag":"check")+'<div><b>'+(actEdit.msg.err?'นำเข้าไม่ได้ · ':'นำเข้าแล้ว · ')+esc(actEdit.msg.file)+'</b>'+actEdit.msg.lines.slice(0,8).map(function(l){ return '<div>'+esc(l)+'</div>'; }).join('')+(actEdit.msg.lines.length>8?'<div>และอีก '+(actEdit.msg.lines.length-8)+' รายการ</div>':'')+'</div></div>' : '';
+    aeRoot().innerHTML='<div class="ae-backdrop" data-ae-close="1"><div class="ae-box ae2" role="dialog" aria-modal="true" aria-labelledby="aeTitle">'+
+      '<div class="ae-head ae2-head"><div class="ae2-hl"><div class="ae-rid mono">'+r.id+'</div><h3 id="aeTitle">แก้ไขสาเหตุและแนวทางจัดการ</h3><div class="ae-sub">'+esc(r.title)+'</div></div>'+
+        '<div class="ae2-tools"><button type="button" class="ra-btn sm" data-ae-tpl="1">'+icon("download")+'แม่แบบ Excel</button>'+
+        '<label class="ra-btn sm ae-up">'+icon("upload")+'นำเข้า<input type="file" accept=".xlsx" id="aeXlsx" class="sr-only"></label></div>'+
+        '<button type="button" class="modal-close" data-ae-cancel="1" aria-label="ปิด">&times;</button></div>'+
+      msg+
+      '<div class="ae2-main"><nav class="ae2-nav" aria-label="ปัจจัยและสาเหตุ">'+nav+'</nav><div class="ae-body ae2-pane">'+pane+'</div></div>'+
+      '<div class="ae-foot"><span class="ae-hint">บันทึกความคืบหน้าจะลงวันที่ '+thDate(ASOF)+'</span><button type="button" class="ra-btn" data-ae-cancel="1">ยกเลิก</button><button type="button" class="ra-btn" data-ae-save="draft">บันทึกร่าง</button><button type="button" class="ra-btn primary" data-ae-save="submit">'+icon("arrow")+'ส่งให้ Coordinator ตรวจ</button></div>'+
+    '</div></div>';
+    document.body.style.overflow="hidden";
+  }
+  function saveActEditor(mode){
+    var r=RISKS.filter(function(x){ return x.id===actEdit.rid; })[0]; if(!r) return; var before=r.factors;
+    var notes=[], nf=[];
+    actEdit.f.forEach(function(ef, fi){
+      var causes=[], resp=[], acts=[];
+      function push(it, c){ if(!String(it.text).trim()) return;
+        var a={due:it.due||ASOF, status:it.status, owner:it.owner}, log=it.log.slice();
+        if(c!=null) a.c=c;
+        if(it.status==="doing" && it.pct!=="") a.pct=Math.max(0, Math.min(100, +it.pct));
+        if(String(it.note).trim()){ log.push({d:ASOF, note:it.note.trim()}); notes.push({t:it.text.trim(), b:it.note.trim()}); }
+        if(log.length) a.log=log;
+        resp.push(it.text.trim()); acts.push(a); }
+      ef.causes.forEach(function(c){ var t=String(c.text).trim();
+        if(!t){ c.items.forEach(function(it){ push(it, null); }); return; }
+        causes.push(t); c.items.forEach(function(it){ push(it, causes.length-1); }); });
+      ef.orphans.forEach(function(it){ push(it, null); });
+      nf.push({name:ef.name, causes:causes, responses:resp, acts:acts});
+    });
+    var sl=structDiff(before, nf);
+    r.factors=nf;
+    riskEdit(r.id, "factors", r.factors);
+    var pf=flowOf(r), f={state: mode==="submit" ? "submitted" : "draft", by:currentUser.name, role:currentUser.role, d:ASOF, files:(pf.files||[]).slice(), acts:true,
+      struct: !!(pf.struct || sl.length), structLines:(pf.structLines||[]).concat(sl)};
+    setFlow(r, f);
+    logAudit(r.id, "act", mode==="submit" ? "ส่งรายงาน "+PERIOD+" ให้ Coordinator ตรวจ (แนวทางจัดการ)" : "บันทึกร่างแนวทางจัดการ "+PERIOD, notes.concat(sl.map(function(t){ return {t:"เปลี่ยนโครงสร้าง", b:t}; })));
+    closeActEditor(); rerenderFilterable(); toast(mode==="submit" ? "ส่งรายงานของ "+r.id+" ให้ "+coordName(r)+" ตรวจแล้ว" : "บันทึกร่างแล้ว ยังไม่ส่ง");
+  }
+  /* การเปลี่ยนโครงสร้าง: เพิ่ม/ลบสาเหตุหรือแนวทาง และเลื่อนกำหนดเสร็จ */
+  function structDiff(a, b){ var out=[];
+    function acts(fs){ var m={}; fs.forEach(function(f){ f.responses.forEach(function(t, i){ m[t]=(f.acts||[])[i]||{}; }); }); return m; }
+    function causes(fs){ var s={}; fs.forEach(function(f){ (f.causes||[]).forEach(function(c){ s[c]=1; }); }); return s; }
+    var A=acts(a), B=acts(b), ca=causes(a), cb=causes(b);
+    Object.keys(cb).forEach(function(c){ if(!ca[c]) out.push("เพิ่มสาเหตุ: "+c); });
+    Object.keys(ca).forEach(function(c){ if(!cb[c]) out.push("ลบสาเหตุ: "+c); });
+    Object.keys(B).forEach(function(t){ if(!A[t]) out.push("เพิ่มแนวทาง: "+t); else if(A[t].due && B[t].due && A[t].due!==B[t].due) out.push("เลื่อนกำหนด: "+t+" ("+thDate(A[t].due)+" → "+thDate(B[t].due)+")"); });
+    Object.keys(A).forEach(function(t){ if(!B[t]) out.push("ลบแนวทาง: "+t); });
+    return out; }
+  function applyRiskEdits(){ try{ var ed=JSON.parse(sessionStorage.getItem("prc-risk-edits")||"{}");
+    RISKS.forEach(function(r){ var e=ed[r.id]; if(!e) return; if(Array.isArray(e)) e={factors:e};
+      if(e.factors) r.factors=e.factors;
+      if(e.kris) e.kris.forEach(function(x, i){ var k=r.kris[i]; if(!k) return; k.current=x.current; k.status=x.status; if(x.cur0!=null) k.cur0=x.cur0; k.note=x.note||""; }); }); }catch(err){} }
+  (function(){
+    var root=aeRoot();
+    function newItem(){ var rr=RISKS.filter(function(x){ return x.id===actEdit.rid; })[0]; return {text:"", owner:rr.owner||"", due:ASOF, status:"todo", pct:"", log:[], note:""}; }
+    function focusId(id){ var el=document.getElementById(id); if(el){ el.focus(); el.scrollIntoView({block:"nearest"}); } }
+    root.addEventListener("input", function(e){ if(!actEdit) return; var t=e.target, c=t.getAttribute("data-ae-c");
+      if(c){ var q=c.split(":"); actEdit.f[+q[0]].causes[+q[1]].text=t.value;
+        var nt=document.querySelector('#aeRoot [data-ae-sel="'+c+'"] .t'); if(nt) nt.innerHTML=t.value.trim() ? esc(t.value) : '<em>สาเหตุใหม่</em>'; return; }
+      var k=t.getAttribute("data-ae"); if(!k) return; var p=k.split(":"); aeItem(k)[p[3]]=t.value; });
+    root.addEventListener("change", function(e){ if(!actEdit) return; var t=e.target;
+      if(t.id==="aeXlsx" && t.files[0]){ axImport(t.files[0]); return; }
+      var k=t.getAttribute("data-ae"); if(k && /:due$/.test(k)){ keepScroll(renderActEditor); focusId(t.id); } });
+    root.addEventListener("click", function(e){
+      var t, p; if(!actEdit) return;
+      if(e.target.closest("[data-ae-cancel]") || (e.target.hasAttribute && e.target.hasAttribute("data-ae-close"))){ closeActEditor(); return; }
+      if(e.target.closest("[data-ae-save]")){ saveActEditor(e.target.closest("[data-ae-save]").getAttribute("data-ae-save")); return; }
+      if(e.target.closest("[data-ae-tpl]")){ axTemplate(); return; }
+      if((t=e.target.closest("[data-ae-sel]"))){ p=t.getAttribute("data-ae-sel").split(":"); actEdit.sel={fi:+p[0], ci:p[1]==="o"?"o":+p[1]}; actEdit.open=null;
+        renderActEditor(); var pn=document.querySelector("#aeRoot .ae2-pane"); if(pn) pn.scrollTop=0;
+        if(window.innerWidth<=760 && pn){ pn.scrollIntoView({block:"start"}); } else keepNav(t); return; }
+      if((t=e.target.closest("[data-ae-open]"))){ var id=t.getAttribute("data-ae-open"); actEdit.open = actEdit.open===id ? null : id; actEdit.mv=null; keepScroll(renderActEditor);
+        if(actEdit.open){ p=id.split(":"); focusId("ae-"+p.join("-")+"-text"); } else { var b=document.querySelector('#aeRoot [data-ae-open="'+id+'"]'); if(b) b.focus(); } return; }
+      if((t=e.target.closest("[data-ae-st]"))){ p=t.getAttribute("data-ae-st").split(":"); var it=aeList(+p[0],p[1])[+p[2]]; it.status=p[3]; if(p[3]==="doing" && !it.pct) it.pct=10; keepScroll(renderActEditor);
+        var sb=document.querySelector('#aeRoot [data-ae-st="'+t.getAttribute("data-ae-st")+'"]'); if(sb) sb.focus(); return; }
+      if((t=e.target.closest("[data-ae-add]"))){ p=t.getAttribute("data-ae-add").split(":"); var L=aeList(+p[0],p[1]); L.push(newItem()); actEdit.open=p[0]+":"+p[1]+":"+(L.length-1);
+        keepScroll(renderActEditor); focusId("ae-"+p[0]+"-"+p[1]+"-"+(L.length-1)+"-text"); return; }
+      if((t=e.target.closest("[data-ae-cadd]"))){ var cf=+t.getAttribute("data-ae-cadd"); actEdit.f[cf].causes.push({text:"", items:[]}); actEdit.sel={fi:cf, ci:actEdit.f[cf].causes.length-1}; actEdit.open=null;
+        keepScroll(renderActEditor); focusId("aec-"+cf+"-"+actEdit.sel.ci); var nb=document.querySelector('#aeRoot [data-ae-sel="'+cf+':'+actEdit.sel.ci+'"]'); if(nb) nb.scrollIntoView({block:"nearest"}); return; }
+      if((t=e.target.closest("[data-ae-cdel]"))){ p=t.getAttribute("data-ae-cdel").split(":"); var ef=actEdit.f[+p[0]], gone=ef.causes.splice(+p[1],1)[0];
+        gone.items.forEach(function(it){ if(String(it.text).trim()) ef.orphans.push(it); });
+        actEdit.sel = ef.causes.length ? {fi:+p[0], ci:Math.max(0,+p[1]-1)} : (ef.orphans.length ? {fi:+p[0], ci:"o"} : null); actEdit.open=null;
+        keepScroll(renderActEditor); if(gone.items.length) toast("ย้ายแนวทางของสาเหตุที่ลบไปไว้ที่ “ยังไม่ระบุสาเหตุ”"); return; }
+      if((t=e.target.closest("[data-ae-mv]"))){ var mid=t.getAttribute("data-ae-mv"); actEdit.mv = actEdit.mv===mid ? null : mid; keepScroll(renderActEditor);
+        var mf=document.querySelector("#aeRoot .ae2-mvi:not([disabled])"); if(mf && actEdit.mv){ mf.focus(); mf.scrollIntoView({block:"nearest"}); } return; }
+      if((t=e.target.closest("[data-ae-mvto]"))){ var q=t.getAttribute("data-ae-mvto").split("|"), a=q[0].split(":"), to=q[1].split(":"), src=aeList(+a[0],a[1]), mvIt=src.splice(+a[2],1)[0];
+        aeList(+to[0],to[1]).push(mvIt); actEdit.open=null; actEdit.mv=null; if(!src.length) actEdit.sel={fi:+to[0], ci:+to[1]};
+        keepScroll(renderActEditor); toast("ย้ายไปสาเหตุ "+(+to[0]+1)+"."+(+to[1]+1)+" แล้ว"); return; }
+      if((t=e.target.closest("[data-ae-del]"))){ p=t.getAttribute("data-ae-del").split(":"); aeList(+p[0],p[1]).splice(+p[2],1); actEdit.open=null; keepScroll(renderActEditor); return; }
+    });
+    function keepNav(){ var b=document.querySelector("#aeRoot .ae2-ci.on"); if(b){ b.focus({preventScroll:true}); b.scrollIntoView({block:"nearest"}); } }
+  })();
+  function keepScroll(fn){
+    var b=document.querySelector("#aeRoot .ae-body"), y=b?b.scrollTop:0, n=document.querySelector("#aeRoot .ae2-nav"), ny=n?n.scrollTop:0; fn();
+    var b2=document.querySelector("#aeRoot .ae-body"); if(b2) b2.scrollTop=y; var n2=document.querySelector("#aeRoot .ae2-nav"); if(n2) n2.scrollTop=ny; }
+  document.addEventListener("click", function(e){ var t=e.target.closest && e.target.closest("[data-act-edit]"); if(t) openActEditor(t.getAttribute("data-act-edit")); });
+
+
+  /* ---------------- SESSION EDITS (prototype — this browser tab only) ---------------- */
+  function sessGet(k, d){ try{ var v=JSON.parse(sessionStorage.getItem(k)||"null"); return v===null ? d : v; }catch(err){ return d; } }
+  function sessSet(k, v){ try{ sessionStorage.setItem(k, JSON.stringify(v)); }catch(err){} }
+  function riskEdit(rid, part, val){ var ed=sessGet("prc-risk-edits", {}); if(Array.isArray(ed[rid])) ed[rid]={factors:ed[rid]}; ed[rid]=ed[rid]||{}; ed[rid][part]=val; sessSet("prc-risk-edits", ed); }
+  function riskById(rid){ return RISKS.filter(function(x){ return x.id===rid; })[0]; }
+  function nowHM(){ var d=new Date(); return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }
+  function logAudit(rid, type, title, lines){ var a=sessGet("prc-audit", []); a.push({d:ASOF, tm:nowHM(), rid:rid, type:type, who:currentUser.name, role:currentUser.role, title:title, lines:lines||[]}); sessSet("prc-audit", a); }
+  function seedId(id){ return String(id).replace(/-\d{2}-(\d{2})$/,"-$1"); }
+  function kriMd(r, k){ var md=histModel(seedId(r.id)+"|"+k.name, k.appetite, k.tolerance, k.cur0!=null ? k.cur0 : k.current);
+    if(k.cur0!=null){ var v=hNum(k.current); if(v!==null){ md.vals[md.vals.length-1]=v; md.hasCur=true; md.ok=true; } } return md; }
+  var PERIOD = HIST_MONTHS[HIST_MONTHS.length-1].label, PREV_PERIOD = HIST_MONTHS[HIST_MONTHS.length-2].label;
+  function coordName(r){ return "Risk Coordinator "+r.sub; }
+  function flowOf(r){ var f=sessGet("prc-kri-flow", {})[r.id]; if(f) return f;
+    if(!r.kris.length) return {state:"none"};
+    var sub = r.id==="PSL-SR-69-01" || hSeed(seedId(r.id)+"flow")()<0.12;
+    return sub ? {state:"submitted", by:r.owner, role:"owner", d:ASOF.slice(0,8)+"15", files:[r.sub+"_KRI_"+PERIOD.replace(" ","")+".xlsx"]}
+               : {state:"confirmed", by:r.owner, role:"owner", d:ASOF.slice(0,8)+"12", cby:coordName(r), cd:ASOF.slice(0,8)+"14", files:[r.sub+"_KRI_"+PERIOD.replace(" ","")+".xlsx"]}; }
+  function setFlow(r, f){ var all=sessGet("prc-kri-flow", {}); all[r.id]=f; sessSet("prc-kri-flow", all); }
+  var FLOW_LBL = {draft:"ร่าง ยังไม่ส่ง", submitted:"รอ Coordinator ตรวจ", returned:"ส่งกลับแก้ไข", confirmed:"ส่งส่วนกลางแล้ว"};
+  var FLOW_CLS = {draft:"pending", submitted:"watch", returned:"crit", confirmed:"good"};
+  function flowPill(r){ var f=flowOf(r); if(f.state==="none") return ''; return '<span class="flow-st '+FLOW_CLS[f.state]+'" title="รายงานประจำเดือน = ค่า KRI + ความคืบหน้าแนวทางจัดการ">รายงาน '+PERIOD+' · '+FLOW_LBL[f.state]+(f.struct?' · เปลี่ยนโครงสร้าง':'')+'</span>'; }
+
+  /* ---------------- DIALOGS: KRI update · KRI confirm · Audit Trail · invite user ---------------- */
+  var dlg = null, dlgOpener = null;
+  function dlgShell(o){
+    return '<div class="ae-backdrop" data-ae-close="1"><div class="ae-box'+(o.cls?' '+o.cls:'')+'" role="dialog" aria-modal="true" aria-labelledby="aeTitle">'+
+      '<div class="ae-head'+(o.tools?' ae2-head':'')+'"><div class="ae2-hl">'+(o.rid?'<div class="ae-rid mono">'+o.rid+'</div>':'')+'<h3 id="aeTitle">'+o.title+'</h3>'+(o.sub?'<div class="ae-sub">'+o.sub+'</div>':'')+'</div>'+(o.tools?'<div class="ae2-tools">'+o.tools+'</div>':'')+
+        '<button type="button" class="modal-close" data-ae-cancel="1" aria-label="ปิด">&times;</button></div>'+
+      '<div class="ae-body">'+o.body+'</div>'+
+      '<div class="ae-foot">'+(o.hint?'<span class="ae-hint">'+o.hint+'</span>':'')+o.foot+'</div></div></div>';
+  }
+  function openDlg(d, opener){ dlg=d; dlgOpener=opener||null; renderDlg(); document.body.style.overflow="hidden";
+    var f=document.querySelector("#aeRoot .ae-body input:not([disabled]), #aeRoot .ae-body textarea, #aeRoot .ae-body select, #aeRoot .ae-body button"); if(f) f.focus(); }
+  function closeDlg(){ dlg=null; aeRoot().innerHTML=""; document.body.style.overflow = selectedRisk ? "hidden" : ""; if(dlgOpener && document.body.contains(dlgOpener)) dlgOpener.focus(); dlgOpener=null; }
+  function renderDlg(){ if(!dlg){ aeRoot().innerHTML=""; return; }
+    aeRoot().innerHTML = ({kri:dlgKri, confirm:dlgConfirm, audit:dlgAudit, invite:dlgInvite, profile:dlgProfile, rmcdec:dlgRmcDec})[dlg.kind](); }
+  function kriLine(r, k){ return '<span class="kc-name">'+(k.f?'<span class="rf-no">'+k.f+'</span>':'<span class="rf-no all">รวม</span>')+esc(k.name)+'</span>'; }
+
+  /* อัปเดตค่า KRI */
+  function openKri(rid, opener){ var r=riskById(rid); if(!r) return;
+    var f=flowOf(r);
+    openDlg({kind:"kri", rid:rid, rows:r.kris.map(function(k){ var md=kriMd(r,k), n=md.vals.length, dm=/\(([^)]*)\)/.exec(k.current||"");
+      var v0=hNum(k.current)!==null ? String(hNum(k.current)) : "", d0=dm ? dm[1] : "";
+      return {v:v0, detail:d0, v0:v0, d0:d0, note: k.note||"", md:md, prev: md.ok ? md.vals[n-2] : null}; }),
+      files:(f.files||[]).slice(), err:"", msg:null}, opener); }
+  function kcAnyCrit(){ return dlg.rows.some(function(row){ return kriRowSt(row)==="crit"; }); }
+  function kcFilesLbl(){ return 'หลักฐานที่มาของตัวเลข <em>เช่น รายงานจาก ERP หรือใบบันทึกหน้างาน</em>'+(kcAnyCrit() ? ' <b class="ae-late">จำเป็น เพราะมี KRI เกิน Tolerance</b>' : ' <em>· ไม่บังคับ</em>'); }
+  function kriRowSt(row){ var v=row.v===""?null:+row.v; return v===null || isNaN(v) ? "pending" : hStatus(row.md, v); }
+  function dlgKri(){ var r=riskById(dlg.rid), f=flowOf(r), canCf=can("ตรวจค่า KRI ก่อนส่งส่วนกลาง", r);
+    var body = dlgMsg(dlg.msg)+(f.state==="returned" ? '<div class="dl-alert crit">'+icon("flag")+'<div><b>ส่งกลับแก้ไขโดย '+esc(f.rby||r.owner)+' · '+thDate(f.rd||ASOF)+'</b>'+esc(f.rnote||"")+'</div></div>' : '')+
+      '<div class="kc-list">'+r.kris.map(function(k, i){ var row=dlg.rows[i], st=kriRowSt(row), u=row.md.unit;
+        return '<div class="kc-item '+st+'">'+
+          '<div class="kc-top">'+kriLine(r,k)+'<span class="kc-thr mono">Appetite '+esc(k.appetite||"—")+' · Tolerance '+esc(k.tolerance||"—")+'</span></div>'+
+          (k.calc?'<div class="kc-calc">วิธีวัด: '+esc(k.calc)+'</div>':'')+
+          '<div class="kc-grid">'+
+            '<div class="ae-f1"><span>เดือนก่อน · '+PREV_PERIOD+'</span><div class="kc-prev mono">'+(row.prev===null?'—':hFmt(row.prev,u))+'</div></div>'+
+            '<label class="ae-f1"><span>เดือนนี้ · '+PERIOD+'</span><span class="kc-inw"><input class="ae-in mono" type="number" step="any" id="kc-'+i+'-v" data-kc="'+i+':v" value="'+escAttr(row.v)+'">'+(u?'<i>'+esc(u)+'</i>':'')+'</span></label>'+
+            '<label class="ae-f1"><span>ตัวเลขที่ใช้คำนวณ</span><input class="ae-in" id="kc-'+i+'-d" data-kc="'+i+':detail" value="'+escAttr(row.detail)+'" placeholder="เช่น 14 จาก 100"></label>'+
+            '<div class="ae-f1"><span>สถานะ</span><div class="kc-st" id="kc-'+i+'-st">'+statusPill(st)+'</div></div>'+
+          '</div>'+
+          '<label class="ae-f1 kc-note"'+(st==="crit"||row.note?'':' hidden')+' id="kc-'+i+'-nw"><span>สาเหตุที่เกิน Tolerance และสิ่งที่จะทำ'+(st==="crit"?' <b class="ae-late">จำเป็น</b>':'')+'</span><textarea class="ae-in" rows="2" id="kc-'+i+'-n" data-kc="'+i+':note" placeholder="เช่น เครื่องจักรชุดที่ 2 ติดตั้งล่าช้า คาดว่าเสร็จ ต.ค. 69">'+esc(row.note)+'</textarea></label>'+
+        '</div>'; }).join('')+'</div>'+
+      '<div class="kc-files"><div class="ae-f1"><span id="kcFilesLbl">'+kcFilesLbl()+'</span></div>'+
+        dlg.files.map(function(fn, j){ return '<span class="kc-file">'+icon("clipboard")+esc(fn)+'<button type="button" data-kc-rmf="'+j+'" aria-label="เอาไฟล์ '+escAttr(fn)+' ออก">&times;</button></span>'; }).join('')+
+        '<label class="ae-add kc-up">'+icon("upload")+'แนบไฟล์<input type="file" multiple id="kcFile" class="sr-only"></label></div>'+
+      (dlg.err?'<div class="dl-err" role="alert">'+esc(dlg.err)+'</div>':'');
+    return dlgShell({rid:r.id, title:"อัปเดตค่า KRI · "+PERIOD, sub:esc(r.title), cls:"wide", body:body,
+      tools:'<button type="button" class="ra-btn sm" data-kx-tpl="1">'+icon("download")+'แม่แบบ Excel</button><label class="ra-btn sm ae-up">'+icon("upload")+'นำเข้า<input type="file" accept=".xlsx" id="kxXlsx" class="sr-only"></label>',
+      hint:'ค่าจะขึ้นกราฟทันทีที่บันทึก',
+      foot:'<button type="button" class="ra-btn" data-ae-cancel="1">ยกเลิก</button><button type="button" class="ra-btn" data-kc-save="draft">บันทึกร่าง</button>'+
+        '<button type="button" class="ra-btn primary" data-kc-save="'+(canCf?'confirm':'submit')+'">'+icon(canCf?"check":"arrow")+(canCf?'บันทึกและส่งส่วนกลาง':'ส่งให้ Coordinator ตรวจ')+'</button>'});
+  }
+  function saveKri(mode){ var r=riskById(dlg.rid), lines=[];
+    if(mode!=="draft"){
+      var miss=dlg.rows.some(function(row){ return row.v===""; }), noNote=dlg.rows.some(function(row){ return kriRowSt(row)==="crit" && !String(row.note).trim(); });
+      if(miss){ dlg.err="กรอกค่าให้ครบทุก KRI ก่อนส่ง"; keepScroll(renderDlg); return; }
+      if(noNote){ dlg.err="KRI ที่เกิน Tolerance ต้องมีคำอธิบาย"; keepScroll(renderDlg); return; }
+      if(!dlg.files.length && kcAnyCrit()){ dlg.err="มี KRI เกิน Tolerance ต้องแนบหลักฐานที่มาของตัวเลขอย่างน้อย 1 ไฟล์"; keepScroll(renderDlg); return; }
+    }
+    r.kris.forEach(function(k, i){ var row=dlg.rows[i]; if(row.v==="") return; var v=+row.v, u=row.md.unit;
+      var s=(row.v===row.v0 && row.detail===row.d0) ? k.current : hFmt(v,u)+(String(row.detail).trim()?' ('+row.detail.trim()+')':'');
+      if(s!==k.current) lines.push({t:k.name, a:k.current, b:s});
+      if(k.cur0==null) k.cur0=k.current; k.current=s; k.status=hStatus(row.md, v); k.note=String(row.note).trim(); });
+    riskEdit(r.id, "kris", r.kris.map(function(k){ return {current:k.current, status:k.status, cur0:k.cur0, note:k.note}; }));
+    var st = mode==="draft" ? "draft" : mode==="confirm" ? "confirmed" : "submitted";
+    var pf=flowOf(r), f={state:st, by:currentUser.name, role:currentUser.role, d:ASOF, files:dlg.files.slice(), acts:pf.acts, struct:pf.struct, structLines:pf.structLines}; if(st==="confirmed"){ f.cby=currentUser.name; f.cd=ASOF; }
+    setFlow(r, f);
+    logAudit(r.id, "kri", mode==="draft"?"บันทึกร่างค่า KRI "+PERIOD : mode==="confirm"?"บันทึกค่า KRI "+PERIOD+" และส่ง Risk ส่วนกลาง" : "ส่งค่า KRI "+PERIOD+" ให้ Coordinator ตรวจ", lines);
+    closeDlg(); rerenderFilterable();
+    toast(mode==="draft" ? "บันทึกร่างแล้ว ยังไม่ส่ง" : mode==="confirm" ? "ส่งค่า KRI ของ "+r.id+" ให้ Risk ส่วนกลางแล้ว" : "ส่งค่า KRI ให้ "+coordName(r)+" ตรวจแล้ว");
+  }
+
+  /* ตรวจค่า KRI (Risk Coordinator) */
+  function openConfirm(rid, opener){ openDlg({kind:"confirm", rid:rid, note:"", err:""}, opener); }
+  function dlgConfirm(){ var r=riskById(dlg.rid), f=flowOf(r), wait=f.state==="submitted";
+    var head = wait ? '<div class="dl-alert watch">'+icon("history")+'<div><b>ส่งโดย '+esc(f.by)+' · '+thDate(f.d)+'</b>ตรวจค่าและหลักฐาน แล้วส่งให้ Risk ส่วนกลาง หรือส่งกลับให้ Risk Owner แก้ไข</div></div>'
+      : '<div class="dl-alert '+FLOW_CLS[f.state]+'">'+icon(f.state==="confirmed"?"check":"flag")+'<div><b>'+(f.state==="confirmed" ? 'ตรวจแล้ว ส่งส่วนกลางโดย '+esc(f.cby||coordName(r))+' · '+thDate(f.cd||f.d) : f.state==="returned" ? 'ส่งกลับแก้ไขแล้ว รอ Risk Owner ส่งใหม่' : 'ยังไม่มีค่าที่ส่งมารอตรวจ')+'</b></div></div>';
+    var tbl = '<div class="tbl-wrap"><table class="cf-tbl"><thead><tr><th>KRI</th><th>เดือนก่อน · '+PREV_PERIOD+'</th><th>เดือนนี้ · '+PERIOD+'</th><th>สถานะ</th><th>Appetite · Tolerance</th></tr></thead><tbody>'+
+      r.kris.map(function(k){ var md=kriMd(r,k), n=md.vals.length, prev=md.ok?md.vals[n-2]:null;
+        return '<tr><td>'+kriLine(r,k)+(k.note?'<div class="cf-note">'+esc(k.note)+'</div>':'')+'</td><td class="mono">'+(prev===null?'—':hFmt(prev,md.unit))+'</td><td class="mono"><b>'+esc(k.current||"—")+'</b></td><td>'+statusPill(k.status)+'</td><td class="mono cf-thr">'+esc(k.appetite||"—")+' · '+esc(k.tolerance||"—")+'</td></tr>'; }).join('')+
+      '</tbody></table></div>';
+    var files = (f.files&&f.files.length) ? '<div class="kc-files"><div class="ae-f1"><span>หลักฐานที่มาของตัวเลข</span></div>'+f.files.map(function(fn){ return '<span class="kc-file">'+icon("clipboard")+esc(fn)+'</span>'; }).join('')+'</div>' : '';
+    var note = wait ? '<label class="ae-f1 kc-note"><span>ความเห็น <em>จำเป็นเมื่อส่งกลับแก้ไข</em></span><textarea class="ae-in" rows="2" id="cfNote" data-cf-note="1">'+esc(dlg.note)+'</textarea></label>'+(dlg.err?'<div class="dl-err" role="alert">'+esc(dlg.err)+'</div>':'') : '';
+    var mon=ASOF.slice(0,7), upd=[]; r.factors.forEach(function(fc){ (fc.acts||[]).forEach(function(a, i){ var l=(a.log||[]).filter(function(x){ return x.d.slice(0,7)===mon; }); if(l.length) upd.push({t:fc.responses[i], a:a, n:l[l.length-1].note}); }); });
+    var acts='<h4 class="cf-h">แนวทางจัดการที่อัปเดตเดือนนี้ <span class="rf-n">'+upd.length+'</span></h4>'+
+      (f.struct && (f.structLines||[]).length ? '<div class="dl-alert watch">'+icon("flag")+'<div><b>เปลี่ยนโครงสร้าง '+f.structLines.length+' รายการ</b>'+f.structLines.map(function(t){ return '<div>'+esc(t)+'</div>'; }).join('')+'</div></div>' : '')+
+      (upd.length ? '<ul class="cf-acts">'+upd.map(function(u){ var st=actState(u.a); return '<li><span class="act-st '+st+'">'+({done:"เสร็จ",late:"ล่าช้า",doing:"กำลังทำ",todo:"ยังไม่เริ่ม"})[st]+'</span><div><div>'+esc(u.t)+'</div><div class="cf-an">'+esc(u.n)+'</div></div></li>'; }).join('')+'</ul>' : '<div class="ov-none">ไม่มีแนวทางที่อัปเดตเดือนนี้</div>');
+    return dlgShell({rid:r.id, title:"ตรวจรายงานประจำเดือน · "+PERIOD, sub:esc(r.title), cls:"wide", body:head+'<h4 class="cf-h">ค่า KRI</h4>'+tbl+files+acts+note,
+      foot: wait ? '<button type="button" class="ra-btn" data-ae-cancel="1">ยกเลิก</button><button type="button" class="ra-btn" data-cf="return">'+icon("flag")+'ส่งกลับแก้ไข</button><button type="button" class="ra-btn primary" data-cf="ok">'+icon("check")+'ตรวจแล้ว ส่งส่วนกลาง</button>'
+        : '<button type="button" class="ra-btn" data-ae-cancel="1">ปิด</button>'});
+  }
+  function saveConfirm(ok){ var r=riskById(dlg.rid), f=flowOf(r), n=String(dlg.note).trim();
+    if(!ok && !n){ dlg.err="ใส่ความเห็นว่าต้องแก้อะไร"; keepScroll(renderDlg); var t=document.getElementById("cfNote"); if(t) t.focus(); return; }
+    if(ok){ f.state="confirmed"; f.cby=currentUser.name; f.cd=ASOF; } else { f.state="returned"; f.rby=currentUser.name; f.rd=ASOF; f.rnote=n; }
+    setFlow(r, f); logAudit(r.id, "kri", ok ? "ตรวจค่า KRI "+PERIOD+" แล้ว ส่ง Risk ส่วนกลาง" : "ส่งค่า KRI "+PERIOD+" กลับให้ Risk Owner แก้ไข", n ? [{t:"ความเห็น", b:n}] : []);
+    closeDlg(); rerenderFilterable(); toast(ok ? "ส่งค่า KRI ของ "+r.id+" ให้ Risk ส่วนกลางแล้ว" : "ส่งกลับให้ "+f.by+" แก้ไขแล้ว");
+  }
+
+  /* Audit Trail */
+  var AUD_T = [["all","ทั้งหมด"],["kri","KRI"],["act","แนวทางจัดการ"],["risk","ข้อมูลความเสี่ยง"]];
+  var TH_FULL = {"ม.ค.":1,"ก.พ.":2,"มี.ค.":3,"เม.ย.":4,"พ.ค.":5,"มิ.ย.":6,"ก.ค.":7,"ส.ค.":8,"ก.ย.":9,"ต.ค.":10,"พ.ย.":11,"ธ.ค.":12};
+  function auditEntries(r){
+    var out=[], coord=coordName(r), n=HIST_MONTHS.length, rnd=hSeed(seedId(r.id)+"aud");
+    function hm(){ return ("0"+(8+Math.floor(rnd()*9))).slice(-2)+":"+("0"+Math.floor(rnd()*60)).slice(-2); }
+    // KRI: coordinator updates, owner confirms — last 3 closed months + current month's flow
+    var mds=r.kris.map(function(k){ return kriMd(r,k); });
+    for(var m=n-4; m<=n-2; m++){ var lbl=HIST_MONTHS[m].label, mo=(m-(n-1))+(+ASOF.slice(5,7)), y=+ASOF.slice(0,4); if(mo<1){ mo+=12; y--; }
+      // report for month m is entered early next month
+      var em=mo+1, ey=y; if(em>12){ em=1; ey++; } var ed=function(day){ return ey+"-"+("0"+em).slice(-2)+"-"+day; };
+      var ln=r.kris.map(function(k,i){ var md=mds[i]; return md.ok ? {t:k.name, a:m>0?hFmt(md.vals[m-1],md.unit):"—", b:hFmt(md.vals[m],md.unit)} : null; }).filter(Boolean);
+      if(!ln.length) continue;
+      out.push({d:ed("0"+(8+Math.floor(rnd()*3))), tm:hm(), type:"kri", who:r.owner, role:"owner", title:"ส่งค่า KRI "+lbl+" ให้ Coordinator ตรวจ", lines:ln});
+      out.push({d:ed(String(12+Math.floor(rnd()*3))), tm:hm(), type:"kri", who:coord, role:"coord", title:"ตรวจค่า KRI "+lbl+" แล้ว ส่ง Risk ส่วนกลาง", lines:[]});
+    }
+    var f=flowOf(r), sess=sessGet("prc-audit", []).some(function(a){ return a.rid===r.id && a.type==="kri"; });
+    if(!sess && f.state!=="none"){
+      out.push({d:f.d, tm:hm(), type:"kri", who:f.by, role:f.role||"owner", title:"ส่งค่า KRI "+PERIOD+" ให้ Coordinator ตรวจ", lines:r.kris.map(function(k,i){ var md=mds[i]; return md.ok ? {t:k.name, a:hFmt(md.vals[n-2],md.unit), b:k.current} : null; }).filter(Boolean)});
+      if(f.state==="confirmed") out.push({d:f.cd, tm:hm(), type:"kri", who:f.cby, role:"coord", title:"ตรวจค่า KRI "+PERIOD+" แล้ว ส่ง Risk ส่วนกลาง", lines:[]});
+    }
+    // treatment progress logs
+    r.factors.forEach(function(fc){ (fc.acts||[]).forEach(function(a, i){ (a.log||[]).forEach(function(l, j){
+      var last = j===a.log.length-1;
+      out.push({d:l.d, tm:hm(), type:"act", who:a.owner||r.owner, role:"owner", title: last && a.status==="done" ? "ปิดแนวทางจัดการ — เสร็จ" : "บันทึกความคืบหน้าแนวทางจัดการ", lines:[{t:fc.responses[i], b:l.note}]}); }); }); });
+    // มติ / revision ที่บันทึกไว้ (ไม่รวมที่เพิ่งบันทึกในรอบนี้ ซึ่งอยู่ใน prc-audit แล้ว)
+    var sessRev=sessGet("prc-rmc-dec", []);
+    REV.forEach(function(c){ if(c.rid!==r.id || c.t==="new" || c.t==="close" || sessRev.indexOf(c)!==-1 || sessRev.some(function(x){ return x.p===c.p && x.rid===c.rid && x.t===c.t && String(x.b)===String(c.b); })) return;
+      var lv=c.t==="LI"||c.t==="base"||c.t==="target";
+      out.push({d:c.p+"-17", tm:"16:30", type:"risk", who:c.by||"Risk Management PCC", role:"admin", title:c.t==="LI"?"ปรับระดับความเสี่ยง":c.t==="base"?"ปรับ Baseline":c.t==="target"?"ปรับ Target":c.t==="app"?"ปรับ Appetite":c.t==="tol"?"ปรับ Tolerance":c.t==="owner"?"เปลี่ยน Risk Owner":c.t==="factor_add"?"เพิ่มปัจจัยเสี่ยง":"ตัด KRI",
+        lines:[lv?{t:"L×I", a:c.a.join("×"), b:c.b.join("×")}:(c.a!=null&&c.b!=null?{t:c.k||"", a:String(c.a), b:String(c.b)}:{t:c.k||""})].concat(c.note?[{t:"เหตุผล", b:c.note}]:[])}); });
+    // risk record
+    if(r.rmc){ var mm=/(\d{1,2}) (\S+) (\d{4})/.exec(r.rmc);
+      if(mm && TH_FULL[mm[2]]) out.push({d:(+mm[3]-543)+"-"+("0"+TH_FULL[mm[2]]).slice(-2)+"-"+("0"+mm[1]).slice(-2), tm:"16:30", type:"risk", who:"Risk Management PCC", role:"admin", title:"บันทึกมติคณะกรรมการฯ", lines:[{b:r.rmc.replace(/^มติ RMC [^:]*:\s*/,"")}]}); }
+    out.push({d:"2025-04-01", tm:"10:05", type:"risk", who:"Risk Management PCC", role:"admin", title:"เพิ่มความเสี่ยงเข้าทะเบียน", lines:[{t:"ระดับความเสี่ยง", b:r.level+" ("+r.L+"×"+r.I+")"},{t:"Risk Owner", b:r.owner}]});
+    sessGet("prc-audit", []).forEach(function(a){ if(a.rid===r.id) out.push(a); });
+    out.forEach(function(e,i){ e._i=i; });
+    return out.sort(function(a,b){ return (b.d+b.tm).localeCompare(a.d+a.tm) || b._i-a._i; });
+  }
+  function openAudit(rid, opener){ openDlg({kind:"audit", rid:rid, f:"all"}, opener); }
+  function dlgAudit(){ var r=riskById(dlg.rid), all=auditEntries(r);
+    var cnt={all:all.length}; all.forEach(function(e){ cnt[e.type]=(cnt[e.type]||0)+1; });
+    var list=all.filter(function(e){ return dlg.f==="all" || e.type===dlg.f; });
+    var chips='<div class="au-chips" role="group" aria-label="กรองประเภท">'+AUD_T.map(function(t){ return '<button type="button" class="au-chip'+(dlg.f===t[0]?' on':'')+'" aria-pressed="'+(dlg.f===t[0])+'" data-au-f="'+t[0]+'">'+t[1]+'<span class="rf-n">'+(cnt[t[0]]||0)+'</span></button>'; }).join('')+'</div>';
+    var rows='<ol class="au-list">'+list.map(function(e){ return auditItemHtml(e, false); }).join('')+'</ol>';
+    return dlgShell({rid:r.id, title:"Audit Trail", sub:esc(r.title), cls:"wide", body:chips+rows,
+      hint:'บันทึกอัตโนมัติ แก้ไขหรือลบไม่ได้', foot:'<button type="button" class="ra-btn" data-ae-cancel="1">ปิด</button>'});
+  }
+  function auditItemHtml(e, showRid){ var ro=ROLES[e.role]||{};
+      return '<li class="au-item"><div class="au-when"><b>'+thDate(e.d)+'</b><span class="mono">'+e.tm+'</span></div>'+
+        '<span class="au-dot" style="background:'+(ro.color||'var(--ink-faint)')+'" aria-hidden="true"></span>'+
+        '<div class="au-what"><div class="au-title">'+(showRid?'<button type="button" class="au-rid mono" data-risk="'+e.rid+'">'+e.rid+'</button>':'')+esc(e.title)+'<span class="au-type t-'+e.type+'">'+({kri:"KRI",act:"แนวทางจัดการ",risk:"ข้อมูลความเสี่ยง"})[e.type]+'</span></div>'+
+        '<div class="au-who">'+esc(e.who)+' · '+esc(ro.label||"")+'</div>'+
+        (e.lines&&e.lines.length ? '<ul class="au-lines">'+e.lines.map(function(l){ return '<li>'+(l.t?'<span class="au-k">'+esc(l.t)+'</span>':'')+(l.a!=null?'<span class="mono au-a">'+esc(l.a)+'</span><span class="au-arr" aria-label="เป็น">→</span>':'')+'<span class="'+(l.a!=null?'mono au-b':'au-txt')+'">'+esc(l.b)+'</span></li>'; }).join('')+'</ul>' : '')+
+        '</div></li>';
+  }
+
+  /* เชิญผู้ใช้ */
+  function openInvite(opener){ openDlg({kind:"invite", email:"", name:"", role:"coord", sub:"PEM", risks:[], err:""}, opener); }
+  function dlgInvite(){ var d=dlg;
+    var roles='<div class="iv-roles" role="radiogroup" aria-label="บทบาท">'+ROLE_ORDER.map(function(k){ var ro=ROLES[k], on=d.role===k;
+      return '<button type="button" role="radio" aria-checked="'+on+'" class="iv-role'+(on?' on':'')+'" data-iv-role="'+k+'"><span class="role-ic" style="background:'+ro.color+'">'+icon(ro.icon)+'</span><span><b>'+esc(ro.label)+'</b><small>'+esc(ro.sub)+'</small></span></button>'; }).join('')+'</div>';
+    var scope;
+    if(d.role==="coord" || d.role==="owner"){
+      scope='<label class="ae-f1"><span>บริษัท</span><select class="ae-in" id="ivSub" data-iv="sub">'+PRC.SUBS.map(function(s){ return '<option value="'+s.id+'"'+(s.id===d.sub?' selected':'')+'>'+s.id+' · '+esc(s.th)+'</option>'; }).join('')+'</select></label>';
+      if(d.role==="owner"){ var rs=RISKS.filter(function(x){ return x.sub===d.sub; });
+        scope+='<div class="ae-f1 iv-risks"><span>ความเสี่ยงที่เป็นเจ้าของ</span>'+(rs.length ? rs.map(function(x){ var on=d.risks.indexOf(x.id)!==-1;
+          return '<label class="iv-risk"><input type="checkbox" data-iv-risk="'+x.id+'"'+(on?' checked':'')+'><span class="mono">'+x.id+'</span><span>'+esc(x.title)+'</span></label>'; }).join('') : '<div class="iv-none">ยังไม่มีความเสี่ยงของบริษัทนี้ในทะเบียน</div>')+'</div>'; }
+    } else scope='<div class="iv-all">'+icon("eye")+esc(ROLES[d.role].scopeText)+'</div>';
+    var body='<div class="iv-grid"><label class="ae-f1"><span>อีเมล</span><input class="ae-in" type="email" id="ivEmail" data-iv="email" value="'+escAttr(d.email)+'" placeholder="name@precise.co.th" autocomplete="off"></label>'+
+      '<label class="ae-f1"><span>ชื่อ-นามสกุล</span><input class="ae-in" id="ivName" data-iv="name" value="'+escAttr(d.name)+'"></label></div>'+
+      '<div class="ae-f1 iv-sec"><span>บทบาท</span></div>'+roles+
+      '<div class="ae-f1 iv-sec"><span>ขอบเขตข้อมูล</span></div>'+scope+
+      (d.err?'<div class="dl-err" role="alert">'+esc(d.err)+'</div>':'');
+    return dlgShell({title:"เชิญผู้ใช้", sub:"ผู้ใช้จะได้อีเมลเพื่อเข้าสู่ระบบด้วยบัญชีบริษัท", body:body,
+      foot:'<button type="button" class="ra-btn" data-ae-cancel="1">ยกเลิก</button><button type="button" class="ra-btn primary" data-iv-send="1">'+icon("arrow")+'ส่งคำเชิญ</button>'});
+  }
+  function sendInvite(){ var d=dlg;
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email.trim())){ d.err="ใส่อีเมลให้ถูกต้อง"; keepScroll(renderDlg); document.getElementById("ivEmail").focus(); return; }
+    if(!d.name.trim()){ d.err="ใส่ชื่อผู้ใช้"; keepScroll(renderDlg); document.getElementById("ivName").focus(); return; }
+    if(d.role==="owner" && !d.risks.length){ d.err="เลือกความเสี่ยงที่เป็นเจ้าของอย่างน้อย 1 รายการ"; keepScroll(renderDlg); return; }
+    var demo = d.role==="coord" ? "บริษัทย่อย "+d.sub : d.role==="owner" ? "เจ้าของ "+d.risks.join(", ") : ROLES[d.role].scopeText;
+    var nm=d.name.trim(), ini=d.email.trim().replace(/[^a-z]/gi,"").slice(0,2).toUpperCase();
+    var inv=sessGet("prc-invites", []); inv.push({email:d.email.trim(), name:nm, initials:ini, role:d.role, demo:demo, d:ASOF}); sessSet("prc-invites", inv);
+    var em=d.email.trim(); closeDlg(); build(); toast("ส่งคำเชิญไปที่ "+em+" แล้ว");
+  }
+  function invitedRows(){ return sessGet("prc-invites", []).map(function(u){
+    return '<tr><td><span style="display:inline-flex;align-items:center;gap:8px;">'+avatarHtml(u)+'<span>'+esc(u.name)+'<span class="iv-mail">'+esc(u.email)+'</span></span></span></td><td>'+esc(ROLES[u.role].label)+' <span style="color:var(--ink-faint);font-size:12.5px;">· '+esc(ROLES[u.role].sub)+'</span></td><td>'+esc(u.demo)+'</td><td><span class="pill watch">รอตอบรับ</span></td></tr>'; }).join(''); }
+
+  (function(){
+    var root=aeRoot();
+    root.addEventListener("input", function(e){ if(!dlg) return; var t=e.target, k;
+      if((k=t.getAttribute("data-kc"))){ var p=k.split(":"), row=dlg.rows[+p[0]]; row[p[1]]=t.value;
+        if(p[1]==="v"){ var st=kriRowSt(row), i=p[0]; document.getElementById("kc-"+i+"-st").innerHTML=statusPill(st);
+          var item=t.closest(".kc-item"); item.className="kc-item "+st;
+          var nw=document.getElementById("kc-"+i+"-nw"); nw.hidden = !(st==="crit" || row.note);
+          nw.querySelector("span").innerHTML='สาเหตุที่เกิน Tolerance และสิ่งที่จะทำ'+(st==="crit"?' <b class="ae-late">จำเป็น</b>':'');
+          var fl=document.getElementById("kcFilesLbl"); if(fl) fl.innerHTML=kcFilesLbl(); } return; }
+      if(t.hasAttribute("data-cf-note")){ dlg.note=t.value; return; }
+      if((k=t.getAttribute("data-iv")) && k!=="sub"){ dlg[k]=t.value; return; }
+    });
+    root.addEventListener("change", function(e){ if(!dlg) return; var t=e.target;
+      if(t.id==="kxXlsx" && t.files[0]){ kxImport(t.files[0]); return; }
+      if(t.id==="kcFile"){ Array.prototype.forEach.call(t.files, function(f){ dlg.files.push(f.name); }); dlg.err=""; keepScroll(renderDlg); return; }
+      if(t.hasAttribute("data-iv-risk")){ var id=t.getAttribute("data-iv-risk"), i=dlg.risks.indexOf(id); if(t.checked && i===-1) dlg.risks.push(id); if(!t.checked && i!==-1) dlg.risks.splice(i,1); return; }
+      if(t.getAttribute("data-iv")==="sub"){ dlg.sub=t.value; dlg.risks=[]; keepScroll(renderDlg); }
+    });
+    root.addEventListener("click", function(e){ if(!dlg) return; var t;
+      if(e.target.closest("[data-ae-cancel]") || (e.target.hasAttribute && e.target.hasAttribute("data-ae-close"))){ closeDlg(); return; }
+      if(e.target.closest("[data-kx-tpl]")){ kxTemplate(); return; }
+      if((t=e.target.closest("[data-kc-save]"))){ saveKri(t.getAttribute("data-kc-save")); return; }
+      if((t=e.target.closest("[data-kc-rmf]"))){ dlg.files.splice(+t.getAttribute("data-kc-rmf"),1); keepScroll(renderDlg); return; }
+      if((t=e.target.closest("[data-cf]"))){ saveConfirm(t.getAttribute("data-cf")==="ok"); return; }
+      if((t=e.target.closest("[data-au-f]"))){ dlg.f=t.getAttribute("data-au-f"); keepScroll(renderDlg); var b=document.querySelector('[data-au-f="'+dlg.f+'"]'); if(b) b.focus(); return; }
+      if((t=e.target.closest("[data-iv-role]"))){ dlg.role=t.getAttribute("data-iv-role"); dlg.risks=[]; dlg.err=""; keepScroll(renderDlg); var b2=document.querySelector('[data-iv-role="'+dlg.role+'"]'); if(b2) b2.focus(); return; }
+      if(e.target.closest("[data-iv-send]")){ sendInvite(); return; }
+    });
+  })();
+  document.addEventListener("click", function(e){ if(!e.target.closest) return; var t;
+    if((t=e.target.closest("[data-kri-upd]"))) openKri(t.getAttribute("data-kri-upd"), t);
+    else if((t=e.target.closest("[data-kri-cf]"))) openConfirm(t.getAttribute("data-kri-cf"), t);
+    else if((t=e.target.closest("[data-audit]"))) openAudit(t.getAttribute("data-audit"), t);
+    else if((t=e.target.closest("[data-invite]"))) openInvite(t);
+  });
+
+  /* ---------------- EXCEL: แม่แบบ ปัจจัย > สาเหตุ > แนวทางจัดการ (one row = one action) ---------------- */
+  var AX_HEAD = ["ปัจจัย","สาเหตุ","แนวทางจัดการ","ผู้รับผิดชอบ","กำหนดเสร็จ","สถานะ","ความคืบหน้า %","บันทึกความคืบหน้าเดือนนี้"];
+  var AX_ST = {todo:"ยังไม่เริ่ม", doing:"กำลังทำ", done:"เสร็จ"}, AX_FIRST = 6;
+  function axTemplate(){
+    var r=RISKS.filter(function(x){ return x.id===actEdit.rid; })[0]; if(!r) return;
+    loadLib("xlsx").then(function(){
+      var wb=new window.ExcelJS.Workbook(); wb.creator="PRECISE Risk Management Cockpit";
+      var NAVY="FF1E2761", LINE={style:"thin", color:{argb:"FFD5DAE3"}}, F={name:"Tahoma", size:10};
+      var ws=wb.addWorksheet("แนวทางจัดการ", {views:[{state:"frozen", xSplit:2, ySplit:AX_FIRST-1}], pageSetup:{orientation:"landscape", fitToPage:true, fitToWidth:1, fitToHeight:0, paperSize:9}});
+      ws.columns=[42,48,52,26,14,13,12,40].map(function(w){ return {width:w}; });
+      ws.getCell("A1").value="ปัจจัย สาเหตุ และแนวทางจัดการ"; ws.getCell("A1").font={name:"Tahoma", size:14, bold:true, color:{argb:NAVY}};
+      ws.getCell("A2").value="รหัสความเสี่ยง"; ws.getCell("B2").value=r.id; ws.getCell("B2").font={name:"Consolas", size:11, bold:true, color:{argb:NAVY}};
+      ws.getCell("A3").value="ความเสี่ยง"; ws.getCell("B3").value=r.title; ws.mergeCells("B3:H3"); ws.getCell("B3").alignment={wrapText:true, vertical:"top"}; ws.getRow(3).height=32;
+      [2,3].forEach(function(i){ ws.getCell("A"+i).font={name:"Tahoma", size:10, bold:true, color:{argb:"FF5B6472"}}; ws.getCell("A"+i).alignment={vertical:"top"}; });
+      var hr=ws.getRow(AX_FIRST-1); hr.values=AX_HEAD; hr.height=22;
+      hr.eachCell(function(c){ c.font={name:"Tahoma", size:10, bold:true, color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern", pattern:"solid", fgColor:{argb:NAVY}}; c.alignment={vertical:"middle"}; c.border={top:LINE,left:LINE,bottom:LINE,right:LINE}; });
+      var row=AX_FIRST;
+      actEdit.f.forEach(function(f){
+        function put(cause, it){
+          var x=ws.getRow(row++), d=it && it.due ? new Date(it.due+"T00:00:00Z") : null;
+          x.values=[f.name, cause, it?it.text:"", it?it.owner:"", d, it?AX_ST[it.status]:"", it && it.status==="doing" && it.pct!=="" ? +it.pct : (it && it.status==="done" ? 100 : null), ""];
+        }
+        f.causes.forEach(function(c){ if(c.items.length) c.items.forEach(function(it){ put(c.text, it); }); else put(c.text, null); });
+        f.orphans.forEach(function(it){ put("", it); });
+      });
+      var last=Math.max(row-1, AX_FIRST)+200; // room to add rows
+      for(var i=AX_FIRST; i<=last; i++){ var x=ws.getRow(i);
+        for(var c=1; c<=8; c++){ var cell=x.getCell(c); cell.font=F; cell.alignment={vertical:"top", wrapText:c!==5&&c!==6&&c!==7}; cell.border={top:LINE,left:LINE,bottom:LINE,right:LINE}; }
+        x.getCell(2).fill={type:"pattern", pattern:"solid", fgColor:{argb:"FFEEEBFD"}};
+        x.getCell(5).numFmt="dd/mm/yyyy";
+        x.getCell(6).dataValidation={type:"list", allowBlank:true, formulae:['"ยังไม่เริ่ม,กำลังทำ,เสร็จ"'], showErrorMessage:true, errorTitle:"สถานะ", error:"เลือก ยังไม่เริ่ม / กำลังทำ / เสร็จ"};
+        x.getCell(7).dataValidation={type:"whole", operator:"between", allowBlank:true, formulae:[0,100], showErrorMessage:true, error:"ใส่ 0–100"};
+        x.getCell(5).dataValidation={type:"date", operator:"greaterThan", allowBlank:true, formulae:[new Date("2020-01-01")], showErrorMessage:true, error:"ใส่วันที่ เช่น 31/12/2026"};
+      }
+      var wh=wb.addWorksheet("วิธีกรอก"); wh.columns=[{width:4},{width:90}];
+      ["หนึ่งแถว = แนวทางจัดการ 1 ข้อ",
+       "ปัจจัยและสาเหตุ พิมพ์ซ้ำทุกแถว หรือเว้นว่างไว้ = เหมือนแถวบน",
+       "สาเหตุที่ยังไม่มีแนวทาง: ใส่ปัจจัยและสาเหตุ แล้วเว้นช่องแนวทางจัดการ",
+       "สถานะ เลือกจากรายการ · ความคืบหน้า % ใส่เมื่อ กำลังทำ",
+       "ห้ามแก้รหัสความเสี่ยงในช่อง B2 · นำเข้าได้ที่ปุ่ม “นำเข้าจาก Excel” ในหน้าแก้ไข"].forEach(function(t, i){
+        var x=wh.getRow(i+1); x.values=[i+1, t]; x.font={name:"Tahoma", size:11}; });
+      return wb.xlsx.writeBuffer().then(function(buf){
+        return saveFile("PRECISE_Treatment_"+r.id+".xlsx", new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+      });
+    }).catch(function(){ toast("สร้างไฟล์ไม่สำเร็จ ลองใหม่อีกครั้ง"); });
+  }
+  function axText(v){ if(v==null) return ""; if(typeof v==="object"){ if(v.richText) return v.richText.map(function(t){ return t.text; }).join(""); if(v.text!=null) return String(v.text); if(v.result!=null) return String(v.result); } return String(v).trim(); }
+  function axDate(v){
+    function iso(y,m,d){ if(y>2400) y-=543; var dt=new Date(Date.UTC(y,m-1,d)); return (dt.getUTCFullYear()===y && dt.getUTCMonth()===m-1) ? dt.toISOString().slice(0,10) : null; }
+    if(v instanceof Date) return isNaN(v) ? null : v.toISOString().slice(0,10);
+    if(typeof v==="number") return new Date(Math.round((v-25569)*864e5)).toISOString().slice(0,10);
+    var s=axText(v), m;
+    if((m=/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/.exec(s))) return iso(+m[3],+m[2],+m[1]);
+    if((m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s))) return iso(+m[1],+m[2],+m[3]);
+    return null;
+  }
+  function axImport(file){
+    var name=file.name;
+    loadLib("xlsx").then(function(){ return file.arrayBuffer(); }).then(function(buf){
+      var wb=new window.ExcelJS.Workbook(); return wb.xlsx.load(buf).then(function(){ return wb; });
+    }).then(function(wb){
+      var ws=wb.getWorksheet("แนวทางจัดการ") || wb.worksheets[0], errs=[];
+      var rid=axText(ws.getCell("B2").value);
+      if(rid!==actEdit.rid){ actEdit.msg={err:true, file:name, lines:["ไฟล์นี้เป็นของ "+(rid||"ความเสี่ยงอื่น")+" ไม่ใช่ "+actEdit.rid]}; keepScroll(renderActEditor); return; }
+      var ST={"ยังไม่เริ่ม":"todo","กำลังทำ":"doing","เสร็จ":"done"}, old={};
+      actEdit.f.forEach(function(f){ f.causes.forEach(function(c){ c.items.forEach(function(it){ old[f.name+"|"+it.text]=it; }); }); f.orphans.forEach(function(it){ old[f.name+"|"+it.text]=it; }); });
+      var out=[], fac=null, cau=null, nA=0;
+      ws.eachRow(function(x, n){ if(n<AX_FIRST) return;
+        var v=[1,2,3,4,5,6,7,8].map(function(i){ return x.getCell(i).value; }), t=v.map(axText);
+        if(!t.some(Boolean)) return;
+        if(t[0] && (!fac || fac.name!==t[0])){ fac=out.filter(function(o){ return o.name===t[0]; })[0]; if(!fac){ fac={name:t[0], causes:[], orphans:[]}; out.push(fac); } cau=null; }
+        if(!fac){ errs.push("แถว "+n+": ไม่มีปัจจัย"); return; }
+        if(t[1] && (!cau || cau.text!==t[1])){ cau=fac.causes.filter(function(c){ return c.text===t[1]; })[0]; if(!cau){ cau={text:t[1], items:[]}; fac.causes.push(cau); } }
+        if(!cau){ errs.push("แถว "+n+": ไม่มีสาเหตุ"); return; }
+        if(!t[2]) return; // cause without action yet
+        var st=ST[t[5]||"ยังไม่เริ่ม"], due=axDate(v[4]), pct=t[6]==="" ? "" : Math.round(+t[6]);
+        if(!st){ errs.push("แถว "+n+": สถานะ “"+t[5]+"” ไม่ถูกต้อง"); return; }
+        if(!due){ errs.push("แถว "+n+": กำหนดเสร็จ "+(t[4]?"“"+t[4]+"” อ่านไม่ได้":"ว่าง")); return; }
+        if(pct!=="" && (isNaN(pct) || pct<0 || pct>100)){ errs.push("แถว "+n+": ความคืบหน้า % ต้องเป็น 0–100"); return; }
+        var prev=old[fac.name+"|"+t[2]];
+        cau.items.push({text:t[2], owner:t[3], due:due, status:st, pct:st==="doing"?pct:"", log:prev?prev.log.slice():[], note:t[7]}); nA++;
+      });
+      if(!out.length) errs.push("ไม่พบข้อมูลตั้งแต่แถว "+AX_FIRST);
+      if(errs.length){ actEdit.msg={err:true, file:name, lines:errs}; keepScroll(renderActEditor); return; }
+      actEdit.f=out; actEdit.sel=null; actEdit.open=null;
+      var nC=out.reduce(function(s,f){ return s+f.causes.length; },0);
+      actEdit.msg={err:false, file:name, lines:[out.length+" ปัจจัย · "+nC+" สาเหตุ · "+nA+" แนวทางจัดการ — ตรวจแล้วกดบันทึก"]};
+      renderActEditor(); var b=document.querySelector("#aeRoot .ae-body"); if(b) b.scrollTop=0;
+    }).catch(function(){ actEdit.msg={err:true, file:name, lines:["เปิดไฟล์ไม่ได้ ใช้ไฟล์ .xlsx จากแม่แบบ"]}; keepScroll(renderActEditor); });
+  }
+
+  /* ---------------- EXCEL: แม่แบบค่า KRI รายเดือน (one row = one KRI) ---------------- */
+  var KX_FIRST = 7;
+  function kxTemplate(){
+    var r=riskById(dlg.rid); if(!r) return; var rows=dlg.rows;
+    loadLib("xlsx").then(function(){
+      var wb=new window.ExcelJS.Workbook(); wb.creator="PRECISE Risk Management Cockpit";
+      var NAVY="FF1E2761", LINE={style:"thin", color:{argb:"FFD5DAE3"}}, F={name:"Tahoma", size:10}, GREY="FFF1F3F6", FILL="FFFFF8DB";
+      var ws=wb.addWorksheet("KRI", {views:[{state:"frozen", xSplit:3, ySplit:KX_FIRST-1}], pageSetup:{orientation:"landscape", fitToPage:true, fitToWidth:1, fitToHeight:0, paperSize:9}});
+      ws.columns=[5,9,40,46,17,17,17,16,10,26,48].map(function(w){ return {width:w}; });
+      ws.getCell("A1").value="ค่า KRI รายเดือน"; ws.getCell("A1").font={name:"Tahoma", size:14, bold:true, color:{argb:NAVY}};
+      [["A2","รหัสความเสี่ยง","C2",r.id],["A3","ความเสี่ยง","C3",r.title],["A4","งวด","C4",PERIOD]].forEach(function(x){
+        ws.getCell(x[0]).value=x[1]; ws.getCell(x[0]).font={name:"Tahoma", size:10, bold:true, color:{argb:"FF5B6472"}}; ws.getCell(x[0]).alignment={vertical:"top"};
+        ws.getCell(x[2]).value=x[3]; ws.getCell(x[2]).font={name:x[0]==="A2"?"Consolas":"Tahoma", size:x[0]==="A2"?11:10, bold:x[0]!=="A3", color:{argb:NAVY}}; });
+      ws.mergeCells("C3:K3"); ws.getCell("C3").alignment={wrapText:true, vertical:"top"}; ws.getRow(3).height=30;
+      var head=["#","ปัจจัย","KRI","วิธีวัด","Appetite","Tolerance","เดือนก่อน · "+PREV_PERIOD,"เดือนนี้ · "+PERIOD,"หน่วย","ตัวเลขที่ใช้คำนวณ","สาเหตุที่เกิน Tolerance และสิ่งที่จะทำ"];
+      var hr=ws.getRow(KX_FIRST-1); hr.values=head; hr.height=30;
+      hr.eachCell(function(c, i){ var fill=i===8||i===10||i===11; c.font={name:"Tahoma", size:10, bold:true, color:{argb:fill?"FF1E2761":"FFFFFFFF"}}; c.fill={type:"pattern", pattern:"solid", fgColor:{argb:fill?"FFFFE58A":NAVY}}; c.alignment={vertical:"middle", wrapText:true}; c.border={top:LINE,left:LINE,bottom:LINE,right:LINE}; });
+      r.kris.forEach(function(k, i){ var row=rows[i], x=ws.getRow(KX_FIRST+i);
+        x.values=[i+1, k.f?"ปัจจัย "+k.f:"รวม", k.name, k.calc||"", k.appetite||"", k.tolerance||"", row.prev===null?"":hFmt(row.prev,row.md.unit), row.v===""?null:+row.v, row.md.unit||"", row.detail, row.note];
+        for(var c=1;c<=11;c++){ var cell=x.getCell(c), fill=c===8||c===10||c===11; cell.font=F; cell.border={top:LINE,left:LINE,bottom:LINE,right:LINE};
+          cell.alignment={vertical:"top", wrapText:c===3||c===4||c===10||c===11, horizontal:c===1||c===2||c===9?"center":(c>=5&&c<=8?"right":"left")};
+          cell.fill={type:"pattern", pattern:"solid", fgColor:{argb:fill?FILL:GREY}}; }
+        x.getCell(8).font={name:"Tahoma", size:11, bold:true}; x.getCell(8).numFmt="#,##0.###";
+        x.getCell(8).dataValidation={type:"decimal", operator:"between", allowBlank:true, formulae:[-1e12, 1e12], showErrorMessage:true, errorTitle:"ค่า KRI", error:"ใส่ตัวเลขเท่านั้น (ไม่ต้องใส่หน่วย)"};
+      });
+      var wh=wb.addWorksheet("วิธีกรอก"); wh.columns=[{width:4},{width:90}];
+      ["กรอกเฉพาะช่องสีเหลือง: ค่าเดือนนี้ · ตัวเลขที่ใช้คำนวณ · สาเหตุ (ถ้าเกิน Tolerance)",
+       "ค่าเดือนนี้ใส่ตัวเลขอย่างเดียว ไม่ต้องใส่หน่วยหรือ %",
+       "ห้ามเพิ่ม ลบ หรือสลับแถว KRI และห้ามแก้รหัสความเสี่ยงในช่อง C2",
+       "นำเข้าได้ที่ปุ่ม “นำเข้า” ในหน้าอัปเดตค่า KRI แล้วตรวจก่อนกดส่ง"].forEach(function(t, i){ var x=wh.getRow(i+1); x.values=[i+1, t]; x.font={name:"Tahoma", size:11}; });
+      return wb.xlsx.writeBuffer().then(function(buf){
+        return saveFile("PRECISE_KRI_"+r.id+"_"+PERIOD.replace(/\s/g,"").replace(/\./g,"")+".xlsx", new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+      });
+    }).catch(function(){ toast("สร้างไฟล์ไม่สำเร็จ ลองใหม่อีกครั้ง"); });
+  }
+  function kxImport(file){
+    var name=file.name, r=riskById(dlg.rid);
+    function fail(lines){ dlg.msg={err:true, file:name, lines:lines}; keepScroll(renderDlg); }
+    loadLib("xlsx").then(function(){ return file.arrayBuffer(); }).then(function(buf){
+      var wb=new window.ExcelJS.Workbook(); return wb.xlsx.load(buf).then(function(){ return wb; });
+    }).then(function(wb){
+      var ws=wb.getWorksheet("KRI") || wb.worksheets[0], errs=[], got=[];
+      var rid=axText(ws.getCell("C2").value);
+      if(rid!==r.id) return fail(["ไฟล์นี้เป็นของ "+(rid||"ความเสี่ยงอื่น")+" ไม่ใช่ "+r.id]);
+      var per=axText(ws.getCell("C4").value);
+      if(per && per!==PERIOD) errs.push("ไฟล์เป็นงวด "+per+" แต่หน้านี้เป็นงวด "+PERIOD);
+      r.kris.forEach(function(k, i){ var n=KX_FIRST+i, x=ws.getRow(n), nm=axText(x.getCell(3).value);
+        if(nm!==k.name){ errs.push("แถว "+n+": KRI ไม่ตรง (“"+(nm||"ว่าง")+"”) อย่าเพิ่ม ลบ หรือสลับแถว"); return; }
+        var raw=x.getCell(8).value, t=axText(raw).replace(/[,%\s]/g,""), v = raw==null || t==="" ? "" : (typeof raw==="number" ? raw : +t);
+        if(v!=="" && isNaN(v)){ errs.push("แถว "+n+": ค่าเดือนนี้ “"+axText(raw)+"” ไม่ใช่ตัวเลข"); return; }
+        got.push({i:i, v:v===""?"":String(Math.round(v*1e6)/1e6), detail:axText(x.getCell(10).value), note:axText(x.getCell(11).value)});
+      });
+      if(errs.length) return fail(errs);
+      got.forEach(function(g){ var row=dlg.rows[g.i]; row.v=g.v; row.detail=g.detail; row.note=g.note; });
+      var filled=got.filter(function(g){ return g.v!==""; }).length, crit=dlg.rows.filter(function(row){ return kriRowSt(row)==="crit"; }).length;
+      dlg.err=""; dlg.msg={err:false, file:name, lines:["กรอกค่าแล้ว "+filled+" จาก "+r.kris.length+" KRI"+(crit?" · เกิน Tolerance "+crit+" ตัว":"")+" — ตรวจแล้วกดส่ง"]};
+      renderDlg(); var b=document.querySelector("#aeRoot .ae-body"); if(b) b.scrollTop=0;
+    }).catch(function(){ fail(["เปิดไฟล์ไม่ได้ ใช้ไฟล์ .xlsx จากแม่แบบ"]); });
+  }
+  function dlgMsg(m){ return m ? '<div class="dl-alert '+(m.err?'crit':'good')+'" role="'+(m.err?'alert':'status')+'">'+icon(m.err?"flag":"check")+'<div><b>'+(m.err?'นำเข้าไม่ได้ · ':'นำเข้าแล้ว · ')+esc(m.file)+'</b>'+m.lines.slice(0,8).map(function(l){ return '<div>'+esc(l)+'</div>'; }).join('')+(m.lines.length>8?'<div>และอีก '+(m.lines.length-8)+' รายการ</div>':'')+'</div></div>' : ''; }
+
+  /* ---------------- OVERVIEW: what needs a decision this month ---------------- */
+  function prevAsOf(){ var y=+ASOF.slice(0,4), m=+ASOF.slice(5,7)-1; if(m<1){ m=12; y--; } return y+"-"+("0"+m).slice(-2)+ASOF.slice(7); }
+  var ST_RANK={pending:-1, good:0, watch:1, crit:2};
+  function ovChanges(list){
+    var worse=[], better=[], late=[], p0=prevAsOf();
+    list.forEach(function(r){
+      r.kris.forEach(function(k, ki){ var md=kriMd(r,k); if(!md.ok || md.app===null) return; var n=md.vals.length, a=hStatus(md, md.vals[n-2]), b=k.status;
+        if(ST_RANK[b]>ST_RANK[a]) worse.push({r:r, k:k, ki:ki, a:a, b:b, pv:hFmt(md.vals[n-2],md.unit)}); else if(ST_RANK[b]<ST_RANK[a] && ST_RANK[b]>=0) better.push({r:r, k:k, ki:ki, a:a, b:b, pv:hFmt(md.vals[n-2],md.unit)}); });
+      r.factors.forEach(function(f){ (f.acts||[]).forEach(function(a, ai){ if(a.status!=="done" && a.due<ASOF && a.due>=p0) late.push({r:r, t:f.responses[ai], a:a}); }); });
+    });
+    return {worse:worse, better:better, late:late};
+  }
+  var ST_SHORT={crit:"เกิน Tolerance", watch:"เฝ้าระวัง", good:"ปกติ", pending:"รอข้อมูล"};
+  function ovDecide(list){
+    var crit=[]; list.forEach(function(r){ r.kris.forEach(function(k, ki){ if(k.status==="crit") crit.push({r:r, k:k, ki:ki}); }); });
+    crit.sort(function(x,y){ return riskScore(y.r)-riskScore(x.r) || (x.r.id<y.r.id?-1:1); });
+    var ch=ovChanges(list);
+    function kriRow(o, extra){ return '<button type="button" class="ov-row" data-risk="'+o.r.id+'" data-hsel="kri:'+o.ki+'"><span class="ov-rid mono">'+o.r.id+'</span><span class="ov-t">'+esc(o.k.name)+'</span>'+(extra||'<span class="ov-v mono">'+esc(o.k.current)+'</span>')+'</button>'; }
+    var shown=crit.slice(0,9);
+    var c1='<div class="card ov-card"><div class="card-head"><h3>KRI เกิน Tolerance ('+crit.length+')</h3></div>'+
+      (shown.length ? shown.map(function(o){ return kriRow(o); }).join('') : '<div class="ov-none">ไม่มี KRI เกิน Tolerance</div>')+
+      (crit.length>shown.length ? '<button type="button" class="ov-more" data-goto-crit="1">ดูทั้งหมด '+crit.length+' ตัวใน KRI Monitoring</button>' : '')+'</div>';
+    function grp(title, cls, items, fn, max){ max=max||3; return items.length ? '<div class="ov-g"><div class="ov-gh '+cls+'">'+title+' <span class="rf-n">'+items.length+'</span></div>'+items.slice(0,max).map(fn).join('')+(items.length>max?'<div class="ov-gm">และอีก '+(items.length-max)+' รายการ</div>':'')+'</div>' : ''; }
+    var rc=revCompare(ROUNDS[ROUNDS.length-2]||"", ROUNDS[ROUNDS.length-1]||"", list), lv=rc.nw.map(function(o){ return {r:o.r, txt:'เพิ่มใหม่ '+o.s.L+'×'+o.s.I}; }).concat(rc.up.map(function(o){ return {r:o.r, txt:o.a.L+'×'+o.a.I+' → '+o.b.L+'×'+o.b.I}; }), rc.dn.map(function(o){ return {r:o.r, txt:o.a.L+'×'+o.a.I+' → '+o.b.L+'×'+o.b.I}; }));
+    var body = grp('ความเสี่ยงเพิ่มใหม่ / ระดับเปลี่ยน', '', lv, function(o){ return '<button type="button" class="ov-row" data-risk="'+o.r.id+'"><span class="ov-rid mono">'+o.r.id+'</span><span class="ov-t">'+esc(o.r.title)+'</span><span class="ov-v mono">'+esc(o.txt)+'</span></button>'; })+
+      grp('KRI แย่ลง', 'up', rc.kw, function(o){ return kriRow(o, '<span class="ov-v mono">'+esc(hFmt(o.a.v,o.a.u))+' → '+esc(hFmt(o.b.v,o.b.u))+'</span>'); })+
+      grp('KRI ดีขึ้น', 'dn', rc.kb, function(o){ return kriRow(o, '<span class="ov-v mono">'+esc(hFmt(o.a.v,o.a.u))+' → '+esc(hFmt(o.b.v,o.b.u))+'</span>'); }, 2)+
+      grp('แนวทางจัดการเพิ่งเลยกำหนด', 'up', ch.late, function(o){ return '<button type="button" class="ov-row" data-risk="'+o.r.id+'"><span class="ov-rid mono">'+o.r.id+'</span><span class="ov-t">'+esc(o.t)+'</span><span class="ov-v">กำหนด '+thDate(o.a.due)+'</span></button>'; });
+    var c2='<div class="card ov-card"><div class="card-head"><h3>เปลี่ยนจากเดือนก่อน</h3><span class="act-asof">'+PREV_PERIOD+' → '+PERIOD+'</span></div>'+(body||'<div class="ov-none">ไม่มีการเปลี่ยนสถานะ</div>')+
+      '<button type="button" class="ov-more" data-rv-goto="chg">ดูการเปลี่ยนแปลงรายไตรมาสใน Quarterly Review</button></div>';
+    return '<div class="grid ov-grid">'+c1+c2+'</div>';
+  }
+  function ovBrief(list){
+    var nCrit=0, nLate=0; list.forEach(function(r){ r.kris.forEach(function(k){ if(k.status==="crit") nCrit++; }); r.factors.forEach(function(f){ (f.acts||[]).forEach(function(a){ if(actState(a)==="late") nLate++; }); }); });
+    var kw=revCompare(ROUNDS[ROUNDS.length-2]||"", ROUNDS[ROUNDS.length-1]||"", list).kw.length, nV=list.filter(function(r){ return r.level==="สูงมาก"; }).length;
+    return '<div class="ov-brief">'+icon("flag")+'<span><b>'+PERIOD+'</b> · ความเสี่ยงระดับสูงมาก <b>'+nV+'</b> · KRI เกิน Tolerance <b>'+nCrit+'</b>'+
+      (kw?' <span class="ov-up">(แย่ลงจากเดือนก่อน '+kw+')</span>':'')+' · แนวทางจัดการล่าช้า <b>'+nLate+'</b></span></div>';
+  }
+
+  /* ---------------- KRI MONITORING: KRI × month ---------------- */
+  function kriMonthRows(list){
+    return list.map(function(r){ return r.kris.map(function(k, ki){
+      if(!inSel(kriSt, k.status)) return '';
+      var md=kriMd(r,k), n=md.vals.length, cells='';
+      for(var i=n-6;i<n;i++){ var v=md.ok?md.vals[i]:null, st = v===null || md.app===null ? "pending" : hStatus(md, v);
+        cells+='<td class="km-c '+st+'" title="'+escAttr(HIST_MONTHS[i].label+' · '+(v===null?'—':hFmt(v,md.unit))+' · '+ST_SHORT[st])+'">'+(v===null?'—':(Math.abs(v)>=1000?v.toLocaleString("en-US"):v))+'</td>'; }
+      return '<tr class="rs-row" data-risk="'+r.id+'" data-hsel="kri:'+ki+'" title="คลิกเพื่อดูกราฟประวัติ KRI"><td class="mono" style="color:var(--brand-700);white-space:nowrap;">'+r.id+'</td>'+
+        '<td class="km-k">'+esc(k.name)+(md.unit?' <span class="km-u">('+esc(md.unit)+')</span>':'')+'</td>'+cells+'<td class="mono km-thr">'+esc(k.appetite||"—")+' · '+esc(k.tolerance||"—")+'</td></tr>';
+    }).join(''); }).join('');
+  }
+
+  /* ---------------- REVISION LOG ---------------- */
+  function renderRevision(){
+    var list=filteredRisks(), all=[];
+    list.forEach(function(r){ auditEntries(r).forEach(function(e){ e.rid=r.id; all.push(e); }); });
+    all.sort(function(a,b){ return (b.d+b.tm).localeCompare(a.d+a.tm) || (a.rid<b.rid?-1:1); });
+    var cnt={all:all.length}; all.forEach(function(e){ cnt[e.type]=(cnt[e.type]||0)+1; });
+    var shown=all.filter(function(e){ return audF==="all" || e.type===audF; });
+    var toolbar='<div class="rf tb">'+companyRow(function(id){ return scopeRisks().filter(function(r){ return r.sub===id; }).length; })+
+      tbRow('ประเภท', AUD_T.map(function(t){ return rkChip('aud', t[0], t[1], audF===t[0], cnt[t[0]]||0); }).join(''))+
+      tbSum(Math.min(shown.length, audLimit), shown.length, 'รายการ', false)+'</div>';
+    var body = shown.length ? '<ol class="au-list">'+shown.slice(0, audLimit).map(function(e){ return auditItemHtml(e, true); }).join('')+'</ol>'+
+      (shown.length>audLimit ? '<button type="button" class="ov-more" data-aud-more="1">แสดงเพิ่มอีก '+Math.min(60, shown.length-audLimit)+' รายการ</button>' : '') : emptyState('ไม่มีรายการตามตัวกรองนี้');
+    return '<div class="page-head"><div><h2>Audit Trail</h2><div class="sub">ใครแก้อะไร เมื่อไร ค่าเดิมและค่าใหม่ · บันทึกอัตโนมัติ แก้ไขหรือลบไม่ได้ · สิ่งที่เปลี่ยนรายไตรมาสดูใน Quarterly Review</div></div></div>'+
+      toolbar+'<div class="card rv-card">'+body+'</div>'+renderRiskModal();
+  }
+
+  /* ---------------- REVISIONS: round-by-round snapshots ---------------- */
+  var REV = (PRC.REVISIONS||[]).slice().sort(function(a,b){ return b.p.localeCompare(a.p); }), ROUNDS = PRC.REV_ROUNDS||[];
+  var revA = ROUNDS[ROUNDS.length-2]||"", revB = ROUNDS[ROUNDS.length-1]||"", revView = "compare", rmTab = "detail";
+  function roundLabel(p){ return TH_MON[+p.slice(5,7)-1]+" "+String(+p.slice(0,4)+543).slice(2); }
+  function roundIdx(p){ var c=ASOF.slice(0,7), d=(+c.slice(0,4)-+p.slice(0,4))*12+(+c.slice(5,7)-+p.slice(5,7)); return HIST_MONTHS.length-1-d; }
+  var LV_NAME={"l-crit":"สูงมาก","l-high":"สูง","l-mid":"ปานกลาง","l-low":"ต่ำ"};
+  function riskAt(r, p){ var s={exists:true, L:r.L, I:r.I, owner:r.owner, nF:r.factors.length};
+    REV.forEach(function(c){ if(c.rid!==r.id || c.p<=p) return;
+      if(c.t==="new") s.exists=false; else if(c.t==="LI"){ s.L=c.a[0]; s.I=c.a[1]; } else if(c.t==="owner") s.owner=c.a; else if(c.t==="factor_add") s.nF--; });
+    s.level=LV_NAME[levelForLICorrect(s.L, s.I)]; return s; }
+  function kriStAt(r, k, p){ var md=kriMd(r,k), i=roundIdx(p); if(!md.ok || md.app===null || i<0) return {st:"pending", v:null, u:md.unit}; return {st:hStatus(md, md.vals[i]), v:md.vals[i], u:md.unit}; }
+  function revCompare(A, B, list){
+    var g={nw:[], cl:[], up:[], dn:[], thr:[], oth:[], kw:[], kb:[]}, ids=list.map(function(r){ return r.id; });
+    list.forEach(function(r){ var sA=riskAt(r,A), sB=riskAt(r,B);
+      if(!sB.exists) return;
+      if(!sA.exists){ g.nw.push({r:r, s:sB, c:REV.filter(function(c){ return c.rid===r.id && c.t==="new"; })[0]}); return; }
+      var d=sB.L*sB.I - sA.L*sA.I; if(d){ (d>0?g.up:g.dn).push({r:r, a:sA, b:sB, c:REV.filter(function(c){ return c.rid===r.id && c.t==="LI" && c.p>A && c.p<=B; })[0]}); }
+      r.kris.forEach(function(k, ki){ var a=kriStAt(r,k,A), b=kriStAt(r,k,B); if(a.st==="pending"||b.st==="pending") return;
+        if(ST_RANK[b.st]>ST_RANK[a.st]) g.kw.push({r:r, k:k, ki:ki, a:a, b:b}); else if(ST_RANK[b.st]<ST_RANK[a.st]) g.kb.push({r:r, k:k, ki:ki, a:a, b:b}); });
+    });
+    REV.forEach(function(c){ if(!(c.p>A && c.p<=B)) return;
+      if(c.t==="close"){ if(inSel(activeFilter, c.sub) && !(currentUser && currentUser.risks)) g.cl.push(c); return; }
+      if(ids.indexOf(c.rid)===-1) return;
+      if(c.t==="app" || c.t==="tol" || c.t==="base" || c.t==="target") g.thr.push(c); else if(c.t==="owner" || c.t==="factor_add" || c.t==="kri_del") g.oth.push(c); });
+    return g;
+  }
+  function revTxt(c){ return c.t==="base" ? 'Baseline '+c.a.join('×')+' → '+c.b.join('×') : c.t==="target" ? 'Target '+c.a.join('×')+' → '+c.b.join('×') : c.t==="app" ? 'Appetite '+c.a+' → '+c.b : c.t==="tol" ? 'Tolerance '+c.a+' → '+c.b : c.t==="owner" ? 'Risk Owner: '+c.a+' → '+c.b : c.t==="factor_add" ? 'เพิ่มปัจจัยเสี่ยง: '+c.k : c.t==="kri_del" ? 'ตัด KRI: '+c.k : ''; }
+  function rvRow(rid, t, chg, note, hsel, noClick){
+    var inner='<span class="ov-rid mono">'+rid+'</span><span class="ov-t">'+esc(t)+(note?'<span class="rv-note">'+esc(note)+'</span>':'')+'</span><span class="rv-chg">'+chg+'</span>';
+    return noClick ? '<div class="ov-row rv-row static">'+inner+'</div>' : '<button type="button" class="ov-row rv-row" data-risk="'+rid+'"'+(hsel?' data-hsel="'+hsel+'"':'')+'>'+inner+'</button>';
+  }
+  function liTxt(s){ return levelPill(s.level)+' <span class="mono">'+s.L+'×'+s.I+'</span>'; }
+  function renderRevCompare(list, A, B){ var fixed=!!A; A=A||revA; B=B||revB;
+    var g=revCompare(A, B, list);
+    var sel=function(id, val){ return '<select class="rf-sel" id="'+id+'" aria-label="'+(id==="revA"?'รอบก่อน':'รอบนี้')+'">'+ROUNDS.map(function(p){ return '<option value="'+p+'"'+(p===val?' selected':'')+'>'+roundLabel(p)+'</option>'; }).join('')+'</select>'; };
+    var T=[["nw","เพิ่มใหม่","",g.nw.length],["cl","ปิด","",g.cl.length],["up","ระดับสูงขึ้น","bad",g.up.length],["dn","ระดับลดลง","good",g.dn.length],["thr","ปรับเกณฑ์","",g.thr.length],["kw","KRI แย่ลง","bad",g.kw.length],["kb","KRI ดีขึ้น","good",g.kb.length]];
+    var tiles='<div class="rv-tiles">'+T.map(function(t){ return '<a class="rv-tile '+t[2]+(t[3]?'':' zero')+'" href="#rv-'+t[0]+'"><b class="mono">'+t[3]+'</b><span>'+t[1]+'</span></a>'; }).join('')+'</div>';
+    function sec(key, title, rows){ return rows.length ? '<section class="rv-sec" id="rv-'+key+'"><h4>'+title+' <span class="rf-n">'+rows.length+'</span></h4>'+rows.join('')+'</section>' : ''; }
+    var body=
+      sec('nw','ความเสี่ยงเพิ่มใหม่', g.nw.map(function(o){ return rvRow(o.r.id, o.r.title, liTxt(o.s), o.c&&o.c.note); }))+
+      sec('cl','ความเสี่ยงที่ปิด', g.cl.map(function(c){ return rvRow(c.rid, c.title, '<span class="pill pending">ปิดแล้ว</span>', c.note, null, true); }))+
+      sec('up','ระดับความเสี่ยงสูงขึ้น', g.up.map(function(o){ return rvRow(o.r.id, o.r.title, liTxt(o.a)+' → '+liTxt(o.b), o.c&&o.c.note); }))+
+      sec('dn','ระดับความเสี่ยงลดลง', g.dn.map(function(o){ return rvRow(o.r.id, o.r.title, liTxt(o.a)+' → '+liTxt(o.b), o.c&&o.c.note); }))+
+      sec('thr','ปรับเกณฑ์ (Appetite / Tolerance / Baseline / Target)', g.thr.map(function(c){ var rr=riskById(c.rid); return rvRow(c.rid, c.k||(rr?rr.title:''), '<span class="mono">'+esc(revTxt(c))+'</span>', c.note); }))+
+      sec('oth','เปลี่ยนแปลงอื่น', g.oth.map(function(c){ var r=riskById(c.rid); return rvRow(c.rid, r?r.title:'', esc(revTxt(c)), c.note); }))+
+      sec('kw','KRI แย่ลง', g.kw.map(function(o){ return rvRow(o.r.id, o.k.name, '<span class="mono">'+hFmt(o.a.v,o.a.u)+' → '+hFmt(o.b.v,o.b.u)+'</span> '+statusPill(o.b.st), null, 'kri:'+o.ki); }))+
+      sec('kb','KRI ดีขึ้น', g.kb.map(function(o){ return rvRow(o.r.id, o.k.name, '<span class="mono">'+hFmt(o.a.v,o.a.u)+' → '+hFmt(o.b.v,o.b.u)+'</span> '+statusPill(o.b.st), null, 'kri:'+o.ki); }));
+    var bad = A>=B ? '<div class="ov-none">เลือกรอบก่อนให้เก่ากว่ารอบนี้</div>' : '';
+    if(fixed) return '<div class="rv-fixed"><div class="rv-pick"><span>เทียบสิ้น '+roundLabel(A)+' → สิ้น '+roundLabel(B)+'</span></div>'+tiles+(body||'<div class="ov-none">ไม่มีการเปลี่ยนแปลงในไตรมาสนี้</div>')+'</div>';
+    return '<div class="card rv-card"><div class="rv-pick"><span>เทียบ</span>'+sel("revA", revA)+'<span>→</span>'+sel("revB", revB)+'</div>'+
+      (bad || tiles+(body||'<div class="ov-none">ไม่มีการเปลี่ยนแปลงระหว่าง 2 รอบนี้</div>'))+'</div>';
+  }
+  /* risk modal · ประวัติ */
+  function riskHistoryHtml(r){
+    var rs=ROUNDS.slice().reverse(), items='';
+    for(var i=0;i<rs.length;i++){ var p=rs[i], s=riskAt(r,p); if(!s.exists) break;
+      var prev=rs[i+1], ev=[], nk=0, nc=0;
+      r.kris.forEach(function(k){ var x=kriStAt(r,k,p); if(x.st!=="pending"){ nk++; if(x.st==="crit") nc++; } });
+      REV.forEach(function(c){ if(c.rid!==r.id || c.p!==p) return;
+        if(c.t==="new") ev.push('<li class="rh-new">เพิ่มเข้าทะเบียนความเสี่ยง'+(c.note?' — '+esc(c.note):'')+'</li>');
+        else if(c.t==="LI"){ var a=LV_NAME[levelForLICorrect(c.a[0],c.a[1])]; ev.push('<li>ระดับความเสี่ยง <span class="mono">'+c.a[0]+'×'+c.a[1]+'</span> '+a+' → <span class="mono">'+c.b[0]+'×'+c.b[1]+'</span> '+LV_NAME[levelForLICorrect(c.b[0],c.b[1])]+(c.note?' — '+esc(c.note):'')+'</li>'); }
+        else ev.push('<li>'+esc(revTxt(c)+(c.k&&(c.t==="app"||c.t==="tol")?' ('+c.k+')':''))+(c.note?' — '+esc(c.note):'')+'</li>'); });
+      if(prev && riskAt(r,prev).exists) r.kris.forEach(function(k){ var a=kriStAt(r,k,prev), b=kriStAt(r,k,p);
+        if(a.st!=="pending" && b.st!=="pending" && a.st!==b.st) ev.push('<li>KRI '+esc(k.name)+': <span class="mono">'+hFmt(a.v,a.u)+' → '+hFmt(b.v,b.u)+'</span> '+(ST_RANK[b.st]>ST_RANK[a.st]?'<b class="rh-bad">'+ST_SHORT[b.st]+'</b>':'<b class="rh-good">'+ST_SHORT[b.st]+'</b>')+'</li>'); });
+      r.factors.forEach(function(f){ (f.acts||[]).forEach(function(a, ai){ var last=(a.log||[])[a.log?a.log.length-1:0];
+        if(a.status==="done" && last && last.d.slice(0,7)===p) ev.push('<li>แนวทางจัดการเสร็จ: '+esc(f.responses[ai])+'</li>');
+        if(a.status!=="done" && a.due.slice(0,7)===p && a.due<ASOF) ev.push('<li class="rh-late">แนวทางจัดการเลยกำหนด: '+esc(f.responses[ai])+'</li>'); }); });
+      items+='<li class="rh-item"><div class="rh-when"><b>'+roundLabel(p)+'</b>'+(i===0?'<span>รอบล่าสุด</span>':'')+'</div><span class="au-dot" aria-hidden="true"></span>'+
+        '<div class="rh-body"><div class="rh-top">'+levelPill(s.level)+'<span class="mono">L'+s.L+' × I'+s.I+'</span><span>KRI เกิน Tolerance '+nc+' จาก '+nk+'</span></div>'+
+        (ev.length ? '<ul class="rh-ev">'+ev.join('')+'</ul>' : '<div class="rh-none">ไม่มีการเปลี่ยนแปลง</div>')+'</div></li>';
+    }
+    var audit = currentUser && can("ดู Audit Trail", r) ? '<button type="button" class="ra-btn sm ghost" data-audit="'+r.id+'">'+icon("history")+'บันทึกการแก้ไขทั้งหมด (Audit Trail)</button>' : '';
+    return yeLineageHtml(r)+'<div class="rh"><div class="rh-head"><h4>ประวัติรายเดือน</h4>'+audit+'</div><ol class="rh-list">'+items+'</ol></div>';
+  }
+
+  /* ---------------- LEVEL PATH: Baseline → รายไตรมาส → Target ---------------- */
+  var QUARTERS = PRC.QUARTERS || [], RL = PRC.RISK_LEVELS || {}, BASE_PENDING = PRC.BASE_PENDING || {};
+  var QCUR = QUARTERS[QUARTERS.length-1] || null;
+  (function(){ var n=PRC.KRI_NOTES||{}; RISKS.forEach(function(r){ r.kris.forEach(function(k){ if(!k.note && n[r.id+"|"+k.name]) k.note=n[r.id+"|"+k.name]; }); }); })();
+  var LV_RANK = {"l-low":0, "l-mid":1, "l-high":2, "l-crit":3};
+  function lvRank(L, I){ return LV_RANK[levelForLICorrect(L, I)]; }
+  function lvPillLI(s){ return levelPill(LV_NAME[levelForLICorrect(s.L, s.I)])+' <span class="mono lp-li">'+s.L+'×'+s.I+'</span>'; }
+  function monLabel(ym){ return TH_MON[+ym.slice(5,7)-1]+" "+String(+ym.slice(0,4)+543).slice(2); }
+  function qById(id){ return QUARTERS.filter(function(q){ return q.id===id; })[0]; }
+  function monthsBack(ym, n){ var y=+ym.slice(0,4), m=+ym.slice(5,7)-n; while(m<1){ m+=12; y--; } return y+"-"+("0"+m).slice(-2); }
+  function qStart(q){ return monthsBack(q.end, 2); }
+  /* Baseline / Target in force at round p (current value, with later RMC changes undone) */
+  function lvAt(r, p, t){ var rl=RL[r.id]; if(!rl || !rl[t]) return null; var o=rl[t], s={L:o.L, I:o.I, mtg:o.mtg, d:o.d, by:o.by, chg:null};
+    REV.forEach(function(c){ if(c.rid!==r.id || c.t!==t) return; if(c.p>p){ s.L=c.a[0]; s.I=c.a[1]; } else if(!s.chg) s.chg=c; }); return s; }
+  function lvVerdict(cur, base, tgt){ if(!base) return null;
+    var sc=cur.L*cur.I, sb=base.L*base.I;
+    if(tgt && lvRank(cur.L,cur.I)<=lvRank(tgt.L,tgt.I) && sc<=tgt.L*tgt.I) return {k:"reach", t:"ถึง Target แล้ว", cls:"good"};
+    if(sc<sb) return {k:"down", t:"ลดลงจาก Baseline · ยังไม่ถึง Target", cls:"blue"};
+    if(sc===sb) return {k:"flat", t:"ยังไม่ลดลงจาก Baseline", cls:"high"};
+    return {k:"up", t:"สูงขึ้นจาก Baseline", cls:"crit"}; }
+  function actDoneBy(a, end){ if(a.status!=="done") return false; var l=a.log||[]; return (l.length ? l[l.length-1].d : ASOF).slice(0,7)<=end; }
+  function riskQInfo(r, q){
+    var s=riskAt(r, q.end), n=0, done=0, nk=0, nc=0;
+    r.factors.forEach(function(f){ (f.acts||[]).forEach(function(a){ n++; if(actDoneBy(a, q.end)) done++; }); });
+    r.kris.forEach(function(k){ var x=kriStAt(r, k, q.end); if(x.st!=="pending"){ nk++; if(x.st==="crit") nc++; } });
+    var base=lvAt(r, q.end, "base"), tgt=lvAt(r, q.end, "target");
+    return {r:r, s:s, n:n, done:done, nk:nk, nc:nc, base:base, tgt:tgt, v:lvVerdict(s, base, tgt), quad:(nc?"c":"o")+(n && done===n ? "d" : "n")};
+  }
+  function levelPathHtml(r){
+    if(!QCUR || !RL[r.id]) return '';
+    var qs=QUARTERS.filter(function(q){ return riskAt(r, q.end).exists; }), last=riskQInfo(r, QCUR), base=last.base, tgt=last.tgt;
+    var LC={"l-crit":"crit","l-high":"high","l-mid":"watch","l-low":"good"};
+    function step(k, o, tip, cls){ var lv=o?levelForLICorrect(o.L,o.I):null;
+      return '<span class="lp2-s'+(cls?' '+cls:'')+'" title="'+escAttr(tip)+'"><span class="lp2-k">'+k+'</span> '+
+        (o ? '<b class="lp2-lv '+LC[lv]+'">'+LV_NAME[lv]+'</b> <span class="mono lp2-li">'+o.L+'×'+o.I+'</span>' : '<span class="lp2-pend">รอ RMC เห็นชอบ</span>')+'</span>'; }
+    function chg(o){ return o && o.chg ? ' · ปรับจาก '+o.chg.a[0]+'×'+o.chg.a[1]+' เมื่อ '+roundLabel(o.chg.p) : ''; }
+    var arr='<span class="lp2-a" aria-hidden="true">→</span>';
+    var steps=[step('Baseline', base, base ? base.mtg+' · '+thDate(base.d)+chg(base) : (BASE_PENDING[r.id]||'รอ RMC เห็นชอบ'))];
+    qs.forEach(function(q){ var x=riskQInfo(r, q); steps.push(step(q.label, x.s, 'แนวทางเสร็จ '+x.done+'/'+x.n+(x.nk?' · KRI เกิน '+x.nc+'/'+x.nk:''), q===QCUR?'now':'')); });
+    if(tgt) steps.push(step('Target', tgt, 'ภายใน '+monLabel(tgt.by)+chg(tgt), 'tgt'));
+    var v=last.v, gap = v && v.k!=="reach" && tgt ? lvRank(last.s.L,last.s.I)-lvRank(tgt.L,tgt.I) : 0;
+    return '<div class="lp2"><span class="lp2-h">ระดับความเสี่ยง</span><span class="lp2-steps">'+steps.join(arr)+'</span>'+
+      (v ? '<span class="lp2-v"><span class="lp-verdict sm '+v.cls+'">'+v.t+'</span>'+(gap>0?' <span class="lp2-gap">ห่าง Target '+gap+' ระดับ</span>':'')+'</span>' : '')+'</div>';
+  }
+
+  /* ---------------- QUARTERLY REVIEW · 5 ขั้นตามกระบวนการทบทวนรายไตรมาส ----------------
+     1 ข้อมูลรายเดือน → 2 ภาพรวมไตรมาส → 3 วิเคราะห์รายความเสี่ยง → 4 วาระเสนอ RMC → 5 บันทึกมติและปิดรอบ */
+  var rvQ = QCUR ? QCUR.id : "", rvStep = 3, rvF3 = "need", rvF1 = "pend", rvCloseAsk = false, rvTab = "kri";
+  var QUADS = [["cn","เร่งแนวทางจัดการ","high"],["cd","เสร็จแล้วแต่ KRI ยังเกิน","crit"],["on","ติดตามตามแผน","blue"],["od","ได้ผล · พิจารณาลดระดับหรือปิด","good"]];
+  var CAN_REVIEW = "ให้ความเห็น Quarterly Review";
+  function rvStore(){ return sessGet("prc-review", {}); }
+  function rvGet(qid, key){ var s=rvStore()[qid]||{}; if(s[key]) return s[key]; return ((PRC.REVIEW_SEED||{})[qid]||{})[key] || null; }
+  function rvSet(qid, key, patch){ var all=rvStore(), cur=rvGet(qid, key)||{t:"", rmc:false}, nx={t:cur.t, rmc:cur.rmc, own:cur.own, by:currentUser.name, at:ASOF};
+    for(var k in patch) nx[k]=patch[k]; all[qid]=all[qid]||{}; all[qid][key]=nx; sessSet("prc-review", all); return cur; }
+  function qClosed(q){ if(!q) return true; if(q!==QCUR) return {by:"Risk Management PCC", d:null, seed:true}; return sessGet("prc-qclose", {})[q.id] || null; }
+  function rvEditable(q){ return q===QCUR && !qClosed(q) && !!currentUser && can(CAN_REVIEW); }
+  function rvKriItems(infos, q){ var prevEnd=monthsBack(q.end, 3), out=[];
+    infos.forEach(function(x){ x.r.kris.forEach(function(k, ki){ var a=kriStAt(x.r, k, prevEnd), b=kriStAt(x.r, k, q.end);
+      out.push({key:"k|"+x.r.id+"|"+k.name, r:x.r, k:k, ki:ki, a:a, b:b, own: q===QCUR ? (k.note||"") : ((rvGet(q.id, "k|"+x.r.id+"|"+k.name)||{}).own||"")}); }); });
+    return out; }
+  function actMove(a, q){ var st=qStart(q), en=q.end, l=a.log||[], inQ=l.filter(function(e){ var m=e.d.slice(0,7); return m>=st && m<=en; });
+    var dueQ=a.due.slice(0,7)>=st && a.due.slice(0,7)<=en;
+    if(actDoneBy(a, en) && inQ.length && l[l.length-1].d.slice(0,7)>=st) return {k:"done", t:"เสร็จ", cls:"good", e:l[l.length-1]};
+    if(dueQ && !actDoneBy(a, en) && (a.due<ASOF)) return {k:"late", t:"เลยกำหนด", cls:"crit", e:inQ[inQ.length-1]||null};
+    if(!inQ.length) return null;
+    return {k:"prog", t:"คืบหน้า", cls:"blue", e:inQ[inQ.length-1]}; }
+  function rvActItems(infos, q){ var out=[];
+    infos.forEach(function(x){ x.r.factors.forEach(function(f, fi){ (f.acts||[]).forEach(function(a, ai){ var mv=actMove(a, q); if(!mv) return;
+      out.push({key:"a|"+x.r.id+"|"+f.responses[ai], r:x.r, t:f.responses[ai], a:a, mv:mv, fi:fi}); }); }); });
+    return out; }
+  function rvNeeds(it){ return it.b ? it.b.st==="crit" : it.mv.k==="late"; }
+  function rvCell(q, it, edit){ var c=rvGet(q.id, it.key);
+    if(edit) return '<textarea class="qr-cm" rows="'+Math.min(6, Math.max(2, Math.ceil(String(c&&c.t||"").length/34)))+'" data-rv-cm="'+escAttr(it.key)+'" aria-label="ความเห็น Risk ส่วนกลาง · '+escAttr(it.r.id)+'" placeholder="เขียนความเห็นหรือการตีความ">'+esc(c&&c.t||"")+'</textarea>';
+    return c && c.t ? '<div class="qr-cmro">'+esc(c.t)+'</div>' : '<span class="qr-none">—</span>'; }
+  function rvToggle(q, it, edit){ var c=rvGet(q.id, it.key), on=!!(c&&c.rmc);
+    if(!edit) return on ? '<span class="qr-rmc on">เสนอ RMC</span>' : '<span class="qr-none">—</span>';
+    return '<button type="button" class="qr-sw'+(on?' on':'')+'" role="switch" aria-checked="'+on+'" data-rv-rmc="'+escAttr(it.key)+'"><i aria-hidden="true"></i>'+(on?'เสนอ':'ไม่เสนอ')+'</button>'; }
+  function rvLevelTiny(x){ return x.v ? '<span class="lp-verdict sm '+x.v.cls+'">'+x.v.t+'</span>' : '<span class="lp-verdict sm pend">รอ Baseline</span>'; }
+  function rvInfos(q){ return filteredRisks().filter(function(r){ return riskAt(r, q.end).exists; }).map(function(r){ return riskQInfo(r, q); }); }
+  function rvAgendaGroups(){ var q=qById(rvQ)||QCUR, infos=rvInfos(q);
+    var items=rvKriItems(infos, q).concat(rvActItems(infos, q)).filter(function(it){ var c=rvGet(q.id, it.key); return c && c.rmc; }), g=[], by={};
+    items.forEach(function(it){ if(!by[it.r.id]){ by[it.r.id]={x:infos.filter(function(x){ return x.r===it.r; })[0], items:[]}; g.push(by[it.r.id]); } by[it.r.id].items.push(it); });
+    g.sort(function(a,b){ return riskScore(b.x.r)-riskScore(a.x.r) || (a.x.r.id<b.x.r.id?-1:1); });
+    return {q:q, g:g, n:items.length, infos:infos}; }
+  function rvItemLine(q, it){ var c=rvGet(q.id, it.key)||{};
+    var what = it.b ? 'KRI '+it.k.name+' · '+(it.b.v===null?'—':hFmt(it.b.v,it.b.u))+' · '+({crit:"เกิน Tolerance", watch:"เฝ้าระวัง", good:"ปกติ", pending:"รอข้อมูล"})[it.b.st] : 'แนวทางจัดการ '+it.t+' · '+it.mv.t;
+    return {what:what, own:it.own||(it.mv&&it.mv.e&&it.mv.e.note)||"", cm:c.t||""}; }
+  function prevQLabel(q){ var i=QUARTERS.indexOf(q); return i>0 ? QUARTERS[i-1].label : 'สิ้น '+roundLabel(monthsBack(q.end, 3)); }
+  function rvPathTxt(x, q){ var LC={"l-crit":"crit","l-high":"high","l-mid":"watch","l-low":"good"};
+    function s(k, o, cur){ if(!o) return '<span>'+k+' <b class="lp2-pend">รอ RMC</b></span>'; var lv=levelForLICorrect(o.L,o.I);
+      return '<span class="'+(cur?'rv3-cur':'')+'">'+k+' <b class="lp2-lv '+LC[lv]+'">'+LV_NAME[lv]+'</b> <span class="mono">'+o.L+'×'+o.I+'</span></span>'; }
+    var p=riskAt(x.r, monthsBack(q.end, 3)), arr='<span class="lp2-a" aria-hidden="true">→</span>';
+    return '<span class="rv3-path">'+[s('Baseline', x.base), p.exists ? s(prevQLabel(q), p) : '', s(q.label, x.s, true), x.tgt ? s('Target', x.tgt) : ''].filter(Boolean).join(arr)+'</span>'; }
+  /* ขั้นที่ 1 · ข้อมูลรายเดือน */
+  function rvReady(q){ var ms=[monthsBack(q.end,2), monthsBack(q.end,1), q.end], cur=q===QCUR;
+    return rvInfos(q).map(function(x){ var st=ms.map(function(m, i){ if(!riskAt(x.r, m).exists) return "none"; if(cur && i===2){ var f=flowOf(x.r); return f.state==="none" ? "confirmed" : f.state; } return "confirmed"; });
+      return {x:x, ms:ms, st:st, ok:st.every(function(s){ return s==="confirmed" || s==="none"; })}; }); }
+  function step1Html(q, edit){ var rows=rvReady(q), nOk=rows.filter(function(r){ return r.ok; }).length, shown=rows.filter(function(r){ return rvF1==="all" || !r.ok; });
+    var chips='<div class="rf-chips">'+[["pend","ยังไม่ส่งส่วนกลาง", rows.length-nOk],["all","ทั้งหมด", rows.length]].map(function(c){ return '<button type="button" class="rf-chip'+(rvF1===c[0]?' on':'')+'" data-rv-f1="'+c[0]+'" aria-pressed="'+(rvF1===c[0])+'">'+c[1]+'<span class="rf-n">'+c[2]+'</span></button>'; }).join('')+'</div>';
+    var ms=rows.length?rows[0].ms:[];
+    var tbl = shown.length ? '<div class="qr-tw"><table class="qr-t rv1-t"><thead><tr><th>ความเสี่ยง</th><th>Risk Owner</th><th>ผู้ตรวจ</th>'+ms.map(function(m){ return '<th>'+roundLabel(m)+'</th>'; }).join('')+(edit?'<th></th>':'')+'</tr></thead><tbody>'+
+      shown.map(function(r){ return '<tr><td><button type="button" class="qr-rid mono" data-risk="'+r.x.r.id+'">'+r.x.r.id+'</button><div class="rv1-t2">'+esc(r.x.r.title)+'</div></td><td class="qr-own">'+esc(r.x.r.owner||"")+'</td><td class="qr-own">'+esc(coordName(r.x.r))+'</td>'+
+        r.st.map(function(s){ return '<td>'+(s==="none" ? '<span class="qr-none">—</span>' : '<span class="flow-st '+FLOW_CLS[s]+'">'+FLOW_LBL[s]+'</span>')+'</td>'; }).join('')+
+        (edit ? '<td>'+(r.ok ? '' : '<button type="button" class="ra-btn sm" data-rv-remind="'+r.x.r.id+'">แจ้งเตือน</button>')+'</td>' : '')+'</tr>'; }).join('')+'</tbody></table></div>'
+      : '<div class="rv-okmsg">'+icon("check")+'รายงานประจำเดือนของทุกความเสี่ยงส่งถึงส่วนกลางครบแล้ว</div>';
+    return '<div class="rv-bar"><h3>ข้อมูลรายเดือน</h3>'+chips+'<span class="qr-prog">ส่งส่วนกลางแล้ว <b>'+nOk+'</b> จาก '+rows.length+' ความเสี่ยง</span></div>'+
+      '<p class="rv-help">รายงานประจำเดือน (ค่า KRI + ความคืบหน้าแนวทางจัดการ) ต้องผ่าน Risk Owner → Coordinator → ส่วนกลาง ครบทั้ง 3 เดือนก่อนเริ่มวิเคราะห์</p>'+tbl+rvNext(q, 2); }
+  /* ขั้นที่ 2 · ภาพรวมไตรมาส */
+  function step2Html(q){ var infos=rvInfos(q), quadN={}; infos.forEach(function(x){ (quadN[x.quad]=quadN[x.quad]||[]).push(x); });
+    function qc(k){ var d=QUADS.filter(function(x){ return x[0]===k; })[0], xs=quadN[k]||[];
+      return '<div class="qr-qc '+d[2]+(xs.length?'':' zero')+'"><button type="button" class="qr-qh" data-rv-quad="'+k+'"'+(xs.length?'':' disabled')+' title="ดูในขั้นที่ 3"><b class="mono">'+xs.length+'</b>'+d[1]+'</button>'+
+        (xs.length ? '<div class="qr-ids">'+xs.slice(0,6).map(function(x){ return '<button type="button" class="mono" data-risk="'+x.r.id+'" title="'+escAttr(x.r.title)+'">'+x.r.id+'</button>'; }).join('')+(xs.length>6?'<span>+'+(xs.length-6)+'</span>':'')+'</div>' : '')+'</div>'; }
+    var vc={reach:0, down:0, flat:0, up:0, pend:0}; infos.forEach(function(x){ vc[x.v?x.v.k:"pend"]++; });
+    return '<div class="rv-bar"><h3>ภาพรวมไตรมาส '+q.label+'</h3></div>'+
+      '<div class="qr-2x2"><div></div><div class="qr-ch">แนวทางจัดการยังไม่เสร็จ</div><div class="qr-ch">แนวทางจัดการเสร็จครบ</div>'+
+        '<div class="qr-rh">KRI เกิน Tolerance</div>'+qc("cn")+qc("cd")+'<div class="qr-rh">KRI ไม่เกิน</div>'+qc("on")+qc("od")+'</div>'+
+      '<div class="qr-lv"><span class="qr-lvh">ระดับความเสี่ยงเทียบ Baseline / Target</span><span>ถึง Target แล้ว <b class="mono">'+vc.reach+'</b></span><span>ลดลง ยังไม่ถึง Target <b class="mono">'+vc.down+'</b></span><span>ยังไม่ลดลง <b class="mono">'+vc.flat+'</b></span><span class="qr-up">สูงขึ้นจาก Baseline <b class="mono">'+vc.up+'</b></span>'+(vc.pend?'<span>รอ Baseline <b class="mono">'+vc.pend+'</b></span>':'')+'</div>'+
+      '<h4 class="rv-h4">อะไรเปลี่ยนในไตรมาสนี้</h4>'+renderRevCompare(filteredRisks(), monthsBack(q.end, 3), q.end)+rvNext(q, 3); }
+  /* ขั้นที่ 3 · วิเคราะห์รายความเสี่ยง */
+  function step3Html(q, edit){ var infos=rvInfos(q), kAll=rvKriItems(infos, q), aAll=rvActItems(infos, q).filter(function(it){ return it.mv.k!=="prog"; });
+    var needs=kAll.filter(rvNeeds).concat(aAll.filter(rvNeeds)), nDone=needs.filter(function(it){ var c=rvGet(q.id, it.key); return c && String(c.t).trim(); }).length;
+    function needR(x){ return needs.some(function(it){ return it.r===x.r; }); }
+    var cnt={need:infos.filter(needR).length, all:infos.length}; QUADS.forEach(function(d){ cnt[d[0]]=infos.filter(function(x){ return x.quad===d[0]; }).length; });
+    var F=[["need","ต้องดู"]].concat(QUADS.map(function(d){ return [d[0], d[1]]; })).concat([["all","ทั้งหมด"]]);
+    var chips='<div class="rf-chips">'+F.map(function(c){ var on=rvF3===c[0]; return '<button type="button" class="rf-chip'+(on?' on':'')+'" data-rv-f3="'+c[0]+'" aria-pressed="'+on+'">'+c[1]+'<span class="rf-n">'+cnt[c[0]]+'</span></button>'; }).join('')+'</div>';
+    var sel=infos.filter(function(x){ return rvF3==="all" ? true : rvF3==="need" ? needR(x) : x.quad===rvF3; });
+    var blocks=sel.map(function(x){ var its=kAll.filter(function(it){ return it.r===x.r; }).concat(aAll.filter(function(it){ return it.r===x.r; }));
+      var qd=QUADS.filter(function(d){ return d[0]===x.quad; })[0];
+      var rows=its.map(function(it){ var n=rvNeeds(it);
+        var name = it.b ? '<span class="rv3-kind">KRI'+(it.k.f?' · ปัจจัย '+it.k.f:'')+'</span>'+esc(it.k.name) : '<span class="rv3-kind">แนวทางจัดการ</span>'+esc(it.t);
+        var val = it.b ? '<span class="mono">'+(it.a.v===null?'—':hFmt(it.a.v,it.a.u))+' → '+(it.b.v===null?'—':hFmt(it.b.v,it.b.u))+'</span>'+statusPill(it.b.st)
+          : '<span class="qr-mvk '+it.mv.cls+'">'+it.mv.t+'</span><span class="rv3-sub">กำหนด '+thDate(it.a.due)+(it.a.pct!=null&&it.mv.k!=="done"?' · คืบหน้า '+it.a.pct+'%':'')+'</span>';
+        var own = it.b ? it.own : (it.mv.e ? it.mv.e.note : "");
+        return '<div class="rv3-r'+(n?' need':'')+'"><div class="rv3-c rv3-name">'+name+'</div><div class="rv3-c rv3-val">'+val+'</div><div class="rv3-c qr-own">'+(own?esc(own):'<span class="qr-none">—</span>')+'</div>'+
+          '<div class="rv3-c">'+rvCell(q, it, edit)+'</div><div class="rv3-c rv3-tg">'+rvToggle(q, it, edit)+'</div></div>'; }).join('');
+      return '<section class="rv3"><div class="rv3-h"><button type="button" class="qr-rid mono" data-risk="'+x.r.id+'">'+x.r.id+'</button><span class="rv3-t">'+esc(x.r.title)+'</span>'+
+          '<div class="rv3-meta">'+rvPathTxt(x, q)+rvLevelTiny(x)+'<span class="rv3-quad '+qd[2]+'">'+qd[1]+'</span></div></div>'+
+        '<div class="rv3-hd" aria-hidden="true"><span>รายการ</span><span>'+prevQLabel(q)+' → '+q.label+'</span><span>คำชี้แจงจาก Risk Owner</span><span>ความเห็น Risk ส่วนกลาง</span><span>เสนอ RMC</span></div>'+
+        (rows||'<div class="ov-none">ไม่มีรายการในไตรมาสนี้</div>')+'</section>'; }).join('');
+    return '<div class="rv-bar"><h3>วิเคราะห์รายความเสี่ยง</h3>'+chips+'<span class="qr-prog" title="รายการที่ต้องดู = KRI เกิน Tolerance และแนวทางจัดการที่เลยกำหนด">ให้ความเห็นแล้ว <b>'+nDone+'</b> จาก '+needs.length+' รายการที่ต้องดู</span></div>'+
+      (blocks || emptyState('ไม่มีความเสี่ยงตามตัวกรองนี้'))+rvNext(q, 4, edit ? 'ความเห็นบันทึกอัตโนมัติ' : ''); }
+  /* ขั้นที่ 4 · วาระเสนอ RMC */
+  function agendaHtml(A){ var q=A.q;
+    return A.g.map(function(G, gi){ var x=G.x;
+      return '<section class="ag-r"><div class="ag-h"><span class="ag-no mono">'+(gi+1)+'</span><button type="button" class="qr-rid mono" data-risk="'+x.r.id+'">'+x.r.id+'</button><b>'+esc(x.r.title)+'</b></div>'+
+        '<div class="ag-lv">'+rvPathTxt(x, q)+rvLevelTiny(x)+'</div>'+
+        '<ol class="ag-list">'+G.items.map(function(it){ var L=rvItemLine(q, it); return '<li><div class="ag-what">'+esc(L.what)+'</div>'+(L.own?'<div class="ag-own"><span>Risk Owner</span>'+esc(L.own)+'</div>':'')+'<div class="ag-cm"><span>Risk ส่วนกลาง</span>'+(L.cm?esc(L.cm):'—')+'</div></li>'; }).join('')+'</ol></section>'; }).join(''); }
+  function step4Html(q){ var A=rvAgendaGroups(), canX=currentUser && can("Export รายงาน");
+    var tools='<span class="qr-prog">'+A.g.length+' ความเสี่ยง · '+A.n+' รายการ</span>'+(canX?'<button type="button" class="ra-btn primary" data-rv-slides="1"'+(A.g.length?'':' disabled')+'>'+icon("download")+'สร้างสไลด์ RMC</button>':'');
+    return '<div class="rv-bar"><h3>วาระเสนอ RMC · '+esc(q.rmc)+'</h3>'+tools+'</div>'+
+      '<p class="rv-help">รวมเฉพาะรายการที่กด "เสนอ" ในขั้นที่ 3 เรียงตามระดับความเสี่ยง · กรรมการ RMC เปิดดูหน้านี้ในระบบได้ · สไลด์มีปก ภาพรวม Heat Map สิ่งที่เปลี่ยน และหนึ่งสไลด์ต่อความเสี่ยงที่เสนอ</p>'+
+      (A.g.length ? agendaHtml(A) : '<div class="ov-none">ยังไม่มีรายการที่เลือกเสนอ RMC · <button type="button" class="rf-clear" data-rv-step="3">ไปเลือกในขั้นที่ 3</button></div>')+rvNext(q, 5); }
+  /* ขั้นที่ 5 · บันทึกมติและปิดรอบ */
+  function step5Html(q, edit){ var st=qStart(q), en=q.end, cl=qClosed(q);
+    var decs=REV.filter(function(c){ return c.p>=st && c.p<=en && ["LI","base","target","app","tol"].indexOf(c.t)!==-1 && riskById(c.rid) && inSel(activeFilter, riskById(c.rid).sub); });
+    var dl = decs.length ? decs.map(function(c){ var r=riskById(c.rid), chg = c.t==="LI" ? 'ระดับ '+c.a.join('×')+' → '+c.b.join('×') : revTxt(c)+(c.k&&(c.t==="app"||c.t==="tol")?' ('+c.k+')':'');
+        return rvRow(c.rid, r?r.title:'', '<span class="mono">'+esc(chg)+'</span>', (c.note||'')+' · '+roundLabel(c.p)); }).join('') : '<div class="ov-none">ยังไม่มีมติที่บันทึกในไตรมาสนี้</div>';
+    var ye = YE && q===QCUR && q.end.slice(5)==="12" ? '<div class="rv-closebar"><span>การทบทวนความเสี่ยงประจำปี '+YE.from+' → Risk Profile '+YE.to+' ทำแยกที่เมนู Yearly Review</span><a class="ra-btn sm" href="yearly.html" data-page="yearly">ไป Yearly Review →</a></div>' : '';
+    var close;
+    if(cl) close='<div class="rv-closed">'+icon("lock")+'<div><b>ปิดรอบ '+q.label+' แล้ว</b>'+(cl.seed?'เสนอ '+esc(q.rmc)+' · ข้อมูลของไตรมาสนี้อ่านอย่างเดียว':'โดย '+esc(cl.by)+' · '+thDate(cl.d)+' · ความเห็นและการเลือกเสนอ RMC ถูกล็อก')+'</div></div>';
+    else if(!edit) close='<div class="rv-help">รอ Risk ส่วนกลางปิดรอบหลังประชุม '+esc(q.rmc)+'</div>';
+    else if(rvCloseAsk) close='<div class="rv-ask" role="alert"><div><b>ยืนยันปิดรอบ '+q.label+'?</b>หลังปิดรอบจะแก้ความเห็น การเลือกเสนอ RMC และการทบทวนสิ้นปีไม่ได้</div><button type="button" class="ra-btn" data-rv-close="no">ยกเลิก</button><button type="button" class="ra-btn primary" data-rv-close="yes">'+icon("lock")+'ปิดรอบ</button></div>';
+    else close='<div class="rv-closebar"><span>ทำหลังประชุม '+esc(q.rmc)+' และบันทึกมติครบแล้ว</span><button type="button" class="ra-btn" data-rv-close="ask">'+icon("lock")+'ปิดรอบ '+q.label+'</button></div>';
+    var A=rvAgendaGroups(), res=A.g.map(function(G, gi){ var m=rvGet(q.id, "m|"+G.x.r.id)||{};
+      var chips = edit ? '<div class="rv5-res" role="group" aria-label="มติ RMC '+G.x.r.id+'">'+RMC_RES.map(function(o){ var on=m.res===o; return '<button type="button" class="'+(on?'on':'')+'" aria-pressed="'+on+'" data-rv-res="'+G.x.r.id+'|'+o+'">'+o+'</button>'; }).join('')+'</div>'
+        : (m.res ? '<span class="rv5-rro">'+esc(m.res)+'</span>' : '<span class="qr-none">ยังไม่บันทึก</span>');
+      var txt = edit ? '<textarea class="qr-cm" rows="2" data-rv-mt="'+G.x.r.id+'" aria-label="รายละเอียดมติ RMC · '+G.x.r.id+'" placeholder="รายละเอียดมติหรือความเห็นของ RMC เช่น มอบหมายให้ใคร ทำอะไร เมื่อไร">'+esc(m.t||"")+'</textarea>' : (m.t ? '<div class="qr-cmro">'+esc(m.t)+'</div>' : '');
+      return '<div class="rv5-m"><div class="rv5-mh"><span class="ag-no mono">'+(gi+1)+'</span><button type="button" class="qr-rid mono" data-risk="'+G.x.r.id+'">'+G.x.r.id+'</button><span>'+esc(G.x.r.title)+'</span></div>'+chips+txt+'</div>'; }).join('');
+    var nRes=A.g.filter(function(G){ var m=rvGet(q.id, "m|"+G.x.r.id); return m && m.res; }).length;
+    return '<div class="rv-bar"><h3>บันทึกมติและปิดรอบ</h3></div>'+
+      '<p class="rv-help">หลังประชุม '+esc(q.rmc)+' บันทึกมติของแต่ละวาระ ถ้ามติให้ปรับระดับหรือเกณฑ์ ให้บันทึกในส่วนถัดไปด้วย ทุกอย่างลง Audit Trail อัตโนมัติ</p>'+
+      '<h4 class="rv-h4">มติ RMC ต่อวาระที่เสนอ <span class="rf-n">'+nRes+'/'+A.g.length+'</span></h4>'+(res||'<div class="ov-none">ไม่มีวาระที่เสนอในไตรมาสนี้</div>')+
+      '<div class="rv-h4 rv5-h"><span>การปรับระดับและเกณฑ์ตามมติ <span class="rf-n">'+decs.length+'</span></span>'+(edit?'<button type="button" class="ra-btn sm" data-rd-open="1">'+icon("gavel")+'บันทึกการปรับ</button>':'')+'</div><div class="rv5-list">'+dl+'</div>'+ye+'<h4 class="rv-h4">ปิดรอบ</h4>'+close; }
+  var RMC_RES = ["รับทราบ","เห็นชอบตามเสนอ","ให้ทบทวนแนวทางจัดการ","ขอข้อมูลเพิ่มเติม"];
+  function rmcNoteOf(r){ for(var i=QUARTERS.length-1; i>=0; i--){ var q=QUARTERS[i], m=rvGet(q.id, "m|"+r.id); if(m && (m.res||m.t)) return 'มติ '+String(q.rmc||'').split(' · ')[0]+' ('+q.label+'): '+(m.res||'')+(m.t?' · '+m.t:''); } return r.rmc||''; }
+  function rvNext(q, n, note){ if(n>5) return ''; var t={2:"ภาพรวมไตรมาส",3:"วิเคราะห์รายความเสี่ยง",4:"วาระเสนอ RMC",5:"บันทึกมติและปิดรอบ"}[n];
+    return '<div class="rv-next"><span>'+(note||'')+'</span><button type="button" class="ra-btn" data-rv-step="'+n+'">ขั้นที่ '+n+' · '+t+' →</button></div>'; }
+  function renderReview(){
+    var q=qById(rvQ)||QCUR; if(!q) return emptyState('ยังไม่มีข้อมูลไตรมาส');
+    var edit=rvEditable(q), cl=qClosed(q), infos=rvInfos(q);
+    /* สถานะของแต่ละขั้น */
+    var ready=rvReady(q), nOk=ready.filter(function(r){ return r.ok; }).length;
+    var g=revCompare(monthsBack(q.end,3), q.end, filteredRisks()), nChg=0; for(var k in g) nChg+=g[k].length;
+    var kAll=rvKriItems(infos, q), aAll=rvActItems(infos, q), needs=kAll.filter(rvNeeds).concat(aAll.filter(rvNeeds)), nDone=needs.filter(function(it){ var c=rvGet(q.id, it.key); return c && String(c.t).trim(); }).length;
+    var A=rvAgendaGroups();
+    var S=[
+      {n:1, t:"ข้อมูลรายเดือน", s: nOk===ready.length ? "done" : "warn", d:'ส่งส่วนกลางแล้ว '+nOk+'/'+ready.length+(nOk<ready.length?' · รอ '+(ready.length-nOk):'')},
+      {n:2, t:"ภาพรวมไตรมาส", s:"info", d:'เปลี่ยน '+nChg+' รายการ · สูงขึ้น '+g.up.length},
+      {n:3, t:"วิเคราะห์รายความเสี่ยง", s: needs.length && nDone>=needs.length ? "done" : "todo", d:'ความเห็น '+nDone+'/'+needs.length+' รายการที่ต้องดู'},
+      {n:4, t:"วาระเสนอ RMC", s: A.n ? "done" : "todo", d:'เลือกแล้ว '+A.n+' รายการ · '+A.g.length+' ความเสี่ยง'},
+      {n:5, t:"บันทึกมติและปิดรอบ", s: cl ? "done" : "todo", d: cl ? 'ปิดรอบแล้ว' : 'มติ '+A.g.filter(function(G){ var m=rvGet(q.id, "m|"+G.x.r.id); return m && m.res; }).length+'/'+A.g.length+' วาระ · ประชุม '+String(q.rmc||'').split(' · ').slice(1).join(' · ')}];
+    var steps='<nav class="rv-steps" aria-label="ขั้นตอนการทบทวน">'+S.map(function(x){ var on=rvStep===x.n;
+      return '<button type="button" class="rv-st '+x.s+(on?' cur':'')+'" data-rv-step="'+x.n+'"'+(on?' aria-current="step"':'')+'><span class="rv-n" aria-hidden="true">'+(x.s==="done"&&!on?'✓':x.n)+'</span><span class="rv-sx"><b>'+x.t+'</b><span>'+x.d+'</span></span></button>'; }).join('')+'</nav>';
+    var qsel='<label class="qr-q"><span class="sr-only">ไตรมาส</span><select class="rf-sel" id="rvQ">'+QUARTERS.map(function(x){ return '<option value="'+x.id+'"'+(x===q?' selected':'')+'>ไตรมาส '+x.label+' · '+x.months+'</option>'; }).join('')+'</select></label>';
+    var chip = cl ? '<span class="rv-qst closed">'+icon("lock")+'ปิดรอบแล้ว · '+esc(q.rmc)+'</span>' : '<span class="rv-qst">กำลังทบทวน · '+esc(q.rmc)+'</span>';
+    var head='<div class="page-head"><div><h2>Quarterly Review</h2><div class="sub">ทบทวนความเสี่ยงรายไตรมาส ตั้งแต่ตรวจข้อมูลจนปิดรอบหลังประชุม RMC</div></div><div class="qr-ctl">'+qsel+chip+'</div></div>';
+    var toolbar='<div class="rf tb">'+companyRow(function(id){ return scopeRisks().filter(function(r){ return (id==="ALL"||r.sub===id) && riskAt(r, q.end).exists; }).length; })+'</div>';
+    var ro='';
+    if(!edit && rvStep>=3){ if(cl && q!==QCUR) ro='<div class="rv-ro">'+icon("lock")+'<div><b>'+q.label+' ปิดรอบแล้ว · ดูย้อนหลังได้อย่างเดียว</b>ความเห็นและมติของไตรมาสนี้บันทึกไว้แล้ว แก้ไขไม่ได้</div>'+(QCUR?'<button type="button" class="ra-btn sm primary" data-rv-cur="1">ไปไตรมาสปัจจุบัน '+QCUR.label+'</button>':'')+'</div>';
+      else if(cl) ro='<div class="rv-ro">'+icon("lock")+'<div><b>'+q.label+' ปิดรอบแล้ว</b>ความเห็นและมติถูกล็อก</div></div>';
+      else ro='<div class="rv-ro">'+icon("eye")+'<div><b>ดูได้อย่างเดียว</b>ความเห็นและการเลือกเสนอ RMC เขียนโดย Risk ส่วนกลาง (สิทธิ์ Admin)</div></div>'; }
+    var body = rvStep===1 ? step1Html(q, edit) : rvStep===2 ? step2Html(q) : rvStep===4 ? step4Html(q) : rvStep===5 ? step5Html(q, edit) : step3Html(q, edit);
+    return head+toolbar+steps+'<div class="card rv-body">'+ro+body+'</div>'+renderRiskModal();
+  }
+  /* สไลด์ RMC (.pptx) */
+  function rvSlides(){ var A=rvAgendaGroups(), q=A.q; if(!A.g.length) return;
+    toast("กำลังสร้างสไลด์");
+    function logoData(){ return fetch("img/logo-h.png").then(function(r){ return r.ok ? r.blob() : null; }).then(function(b){ return !b ? null : new Promise(function(res){ var fr=new FileReader(); fr.onload=function(){ res(fr.result); }; fr.onerror=function(){ res(null); }; fr.readAsDataURL(b); }); }).catch(function(){ return null; }); }
+    Promise.all([loadLib("pptx"), logoData()]).then(function(v){ var logo=v[1];
+      var P=new window.PptxGenJS(); P.layout="LAYOUT_WIDE"; P.author="Risk Management PCC"; P.title="รายงานความเสี่ยงองค์กร "+q.label;
+      var F="Tahoma", NAVY="1F236B", BRAND="2250B4", INK="14161C", MUT="6B7280", LINE="D5DAE3", SOFT="F6F7F9";
+      var LV={"l-crit":["D92D20","FBE6E3","8A1C14"],"l-high":["E6870C","FDEFD9","8A4A05"],"l-mid":["CAA400","FBF2CF","7A5B00"],"l-low":["1A9A51","E2F4E8","0F5B32"]};
+      var ST={crit:["เกิน Tolerance","8A1C14","FBE6E3"],watch:["เฝ้าระวัง","7A5B00","FBF2CF"],good:["ปกติ","0F5B32","E2F4E8"],pending:["รอข้อมูล","5B6472","EEF1F3"]};
+      function T(s, text, o){ var x={fontFace:F, fontSize:12, color:INK, margin:0, isTextBox:true, valign:"top"}; for(var k in o) x[k]=o[k]; s.addText(text, x); }
+      var pageNo=0;
+      function frame(title, sub, small){ var s=P.addSlide(); s.background={color:"FFFFFF"}; pageNo++;
+        T(s, title, {x:0.6, y:0.3, w:12.1, h:small?0.9:0.7, fontSize:small?19:24, bold:true, color:NAVY, valign:"middle"});
+        if(sub) T(s, sub, {x:0.6, y:1.05, w:12.1, h:0.35, fontSize:12, color:MUT});
+        T(s, "Precise · รายงานความเสี่ยงองค์กร "+q.label+" · "+(q.rmc||""), {x:0.6, y:7.0, w:9, h:0.3, fontSize:9, color:MUT});
+        T(s, String(pageNo+1), {x:12.2, y:7.0, w:0.5, h:0.3, fontSize:9, color:MUT, align:"right"}); return s; }
+      function lvBox(s, x, y, w, h, label, o, cur){ var c=o ? LV[levelForLICorrect(o.L,o.I)] : ["B7BEC7","EEF1F3","5B6472"];
+        s.addShape(P.ShapeType.roundRect, {x:x, y:y, w:w, h:h, rectRadius:0.08, fill:{color:c[1]}, line:{color:cur?c[0]:c[1], width:cur?1.5:0.75}});
+        T(s, label, {x:x+0.15, y:y+0.1, w:w-0.3, h:0.28, fontSize:10.5, color:MUT});
+        T(s, o ? LV_NAME[levelForLICorrect(o.L,o.I)]+"  "+o.L+"×"+o.I : "รอ RMC เห็นชอบ", {x:x+0.15, y:y+0.38, w:w-0.3, h:0.4, fontSize:15, bold:true, color:c[2]}); }
+      /* 1 · ปก */
+      var s=P.addSlide(); s.background={color:NAVY};
+      if(logo){ s.addShape(P.ShapeType.roundRect, {x:0.8, y:0.7, w:3.0, h:0.75, rectRadius:0.1, fill:{color:"FFFFFF"}, line:{color:"FFFFFF"}}); s.addImage({data:logo, x:1.0, y:0.86, w:2.6, h:0.41}); }
+      T(s, "รายงานความเสี่ยงองค์กร", {x:0.8, y:2.5, w:11.5, h:1.0, fontSize:40, bold:true, color:"FFFFFF"});
+      T(s, "ไตรมาส "+q.label+" ("+q.months+")", {x:0.8, y:3.55, w:11.5, h:0.6, fontSize:22, color:"CADCFC"});
+      T(s, "เสนอ "+(q.rmc||"คณะกรรมการบริหารความเสี่ยง"), {x:0.8, y:4.25, w:11.5, h:0.5, fontSize:16, color:"FFFFFF"});
+      T(s, "ข้อมูล ณ "+asofFull()+" · จัดทำโดย Risk Management PCC", {x:0.8, y:6.6, w:11.5, h:0.4, fontSize:11, color:"AEB5CF"});
+      /* 2 · ภาพรวม */
+      var infos=A.infos, byLv={"สูงมาก":0,"สูง":0,"ปานกลาง":0,"ต่ำ":0}; infos.forEach(function(x){ byLv[LV_NAME[levelForLICorrect(x.s.L,x.s.I)]]++; });
+      s=frame("ภาพรวมไตรมาส "+q.label, infos.length+" ความเสี่ยงระดับองค์กร · ระดับ ณ สิ้น"+roundLabel(q.end));
+      [["สูงมาก","l-crit"],["สูง","l-high"],["ปานกลาง","l-mid"],["ต่ำ","l-low"]].forEach(function(l, i){ var c=LV[l[1]], x=0.6+i*3.05;
+        s.addShape(P.ShapeType.roundRect, {x:x, y:1.6, w:2.85, h:1.35, rectRadius:0.08, fill:{color:c[1]}, line:{color:c[1]}});
+        T(s, String(byLv[l[0]]), {x:x+0.2, y:1.7, w:2.4, h:0.75, fontSize:36, bold:true, color:c[2]});
+        T(s, "ระดับ"+l[0], {x:x+0.2, y:2.45, w:2.4, h:0.35, fontSize:13, color:c[2]}); });
+      var qn={}; infos.forEach(function(x){ qn[x.quad]=(qn[x.quad]||0)+1; });
+      T(s, "KRI × แนวทางจัดการ", {x:0.6, y:3.3, w:7.3, h:0.35, fontSize:13, bold:true, color:NAVY});
+      T(s, "แนวทางยังไม่เสร็จ", {x:2.5, y:3.7, w:2.7, h:0.3, fontSize:10.5, color:MUT}); T(s, "แนวทางเสร็จครบ", {x:5.3, y:3.7, w:2.7, h:0.3, fontSize:10.5, color:MUT});
+      [["KRI เกิน Tolerance","cn","cd"],["KRI ไม่เกิน","on","od"]].forEach(function(row, ri){ var y=4.05+ri*1.25; T(s, row[0], {x:0.6, y:y+0.35, w:1.8, h:0.5, fontSize:11, bold:true, color:INK});
+        [row[1], row[2]].forEach(function(k, ci){ var d=QUADS.filter(function(z){ return z[0]===k; })[0], col={high:["FDEFD9","8A4A05"],crit:["FBE6E3","8A1C14"],blue:["E6EAFC","233A95"],good:["E2F4E8","0F5B32"]}[d[2]];
+          s.addShape(P.ShapeType.roundRect, {x:2.5+ci*2.8, y:y, w:2.7, h:1.1, rectRadius:0.08, fill:{color:col[0]}, line:{color:col[0]}});
+          T(s, String(qn[k]||0), {x:2.65+ci*2.8, y:y+0.08, w:2.4, h:0.5, fontSize:22, bold:true, color:col[1]});
+          T(s, d[1], {x:2.65+ci*2.8, y:y+0.6, w:2.4, h:0.45, fontSize:10.5, color:col[1]}); }); });
+      var vc={reach:0, down:0, flat:0, up:0, pend:0}; infos.forEach(function(x){ vc[x.v?x.v.k:"pend"]++; });
+      T(s, "ระดับเทียบ Baseline / Target", {x:8.5, y:3.3, w:4.2, h:0.35, fontSize:13, bold:true, color:NAVY});
+      [["ถึง Target แล้ว", vc.reach, "0F5B32"],["ลดลง ยังไม่ถึง Target", vc.down, "233A95"],["ยังไม่ลดลง", vc.flat, "8A4A05"],["สูงขึ้นจาก Baseline", vc.up, "8A1C14"]].concat(vc.pend?[["รอ Baseline", vc.pend, "5B6472"]]:[]).forEach(function(r, i){
+        T(s, r[0], {x:8.5, y:3.8+i*0.52, w:3.2, h:0.45, fontSize:12.5, color:INK, valign:"middle"}); T(s, String(r[1]), {x:11.7, y:3.8+i*0.52, w:1.0, h:0.45, fontSize:18, bold:true, color:r[2], align:"right", valign:"middle"}); });
+      /* 3 · Heat Map */
+      s=frame("Heat Map ความเสี่ยง "+q.label, "L = โอกาสเกิด · I = ผลกระทบ · ณ สิ้น"+roundLabel(q.end));
+      var cw=2.55, ch=1.2, x0=1.9, y0=1.65;
+      for(var L=4; L>=1; L--) for(var I=1; I<=4; I++){ var c=LV[levelForLICorrect(L,I)], cx=x0+(I-1)*cw, cy=y0+(4-L)*ch, ids=infos.filter(function(z){ return z.s.L===L && z.s.I===I; }).map(function(z){ return z.r.id; });
+        s.addShape(P.ShapeType.rect, {x:cx, y:cy, w:cw-0.06, h:ch-0.06, fill:{color:c[1]}, line:{color:"FFFFFF", width:0}});
+        if(ids.length) T(s, ids.join("\n"), {x:cx+0.08, y:cy+0.06, w:cw-0.22, h:ch-0.18, fontSize: ids.length>4 ? 8 : 9.5, color:c[2], bold:true}); }
+      for(var i2=1; i2<=4; i2++){ T(s, "I"+i2, {x:x0+(i2-1)*cw, y:y0+4*ch+0.05, w:cw, h:0.3, fontSize:11, color:MUT, align:"center"}); T(s, "L"+(5-i2), {x:x0-0.55, y:y0+(i2-1)*ch+0.4, w:0.45, h:0.35, fontSize:11, color:MUT, align:"right"}); }
+      /* 4 · อะไรเปลี่ยน */
+      var G=revCompare(monthsBack(q.end,3), q.end, filteredRisks());
+      s=frame("อะไรเปลี่ยนในไตรมาส "+q.label, "เทียบสิ้น"+roundLabel(monthsBack(q.end,3))+" กับสิ้น"+roundLabel(q.end));
+      function lst(title, arr, x, y, w){ T(s, title+"  ("+arr.length+")", {x:x, y:y, w:w, h:0.35, fontSize:13, bold:true, color:NAVY});
+        var lines=arr.slice(0,6).map(function(t){ return {text:t, options:{bullet:true, breakLine:true}}; }); if(arr.length>6) lines.push({text:"และอีก "+(arr.length-6)+" รายการ", options:{color:MUT}});
+        if(!lines.length) lines=[{text:"ไม่มี", options:{color:MUT}}]; else lines[lines.length-1].options.breakLine=false;
+        T(s, lines, {x:x, y:y+0.4, w:w, h:2.2, fontSize:11, paraSpaceAfter:3}); }
+      var liT=function(o){ return o.r.id+"  "+o.a.L+"×"+o.a.I+" → "+o.b.L+"×"+o.b.I; };
+      lst("ระดับสูงขึ้น", G.up.map(liT), 0.6, 1.6, 5.9); lst("ระดับลดลง", G.dn.map(liT), 6.8, 1.6, 5.9);
+      lst("เพิ่มใหม่ / ปิด", G.nw.map(function(o){ return "เพิ่ม "+o.r.id; }).concat(G.cl.map(function(c){ return "ปิด "+c.rid; })), 0.6, 4.3, 5.9);
+      lst("ปรับเกณฑ์และมติ", G.thr.map(function(c){ return c.rid+"  "+revTxt(c); }), 6.8, 4.3, 5.9);
+      /* 5..n · หนึ่งสไลด์ต่อความเสี่ยงที่เสนอ */
+      A.g.forEach(function(Gr, gi){ var x=Gr.x, sl=frame(x.r.id+"  "+x.r.title, null, true), p=riskAt(x.r, monthsBack(q.end,3));
+        var boxes=[["Baseline", x.base]].concat(p.exists?[[prevQLabel(q), p]]:[]).concat([[q.label+" (ปัจจุบัน)", x.s, true]]).concat(x.tgt?[["Target", x.tgt]]:[]);
+        boxes.forEach(function(b, i){ lvBox(sl, 0.6+i*2.55, 1.35, 2.35, 0.85, b[0], b[1], b[2]); });
+        if(x.v) T(sl, x.v.t, {x:0.6+boxes.length*2.55, y:1.35, w:12.7-(0.6+boxes.length*2.55), h:0.85, fontSize:13, bold:true, color:{good:"0F5B32",blue:"233A95",high:"8A4A05",crit:"8A1C14"}[x.v.cls]||INK, valign:"middle"});
+        var rows=[[{text:"KRI", options:{bold:true, color:MUT}},{text:prevQLabel(q)+" → "+q.label, options:{bold:true, color:MUT}},{text:"สถานะ", options:{bold:true, color:MUT}}]];
+        rvKriItems([x], q).forEach(function(it){ var st=ST[it.b.st]||ST.pending;
+          rows.push([{text:it.k.name}, {text:(it.a.v===null?"—":hFmt(it.a.v,it.a.u))+" → "+(it.b.v===null?"—":hFmt(it.b.v,it.b.u))}, {text:st[0], options:{color:st[1], fill:{color:st[2]}, bold:true}}]); });
+        T(sl, "ตัวชี้วัดความเสี่ยง", {x:0.6, y:2.5, w:5.9, h:0.35, fontSize:13, bold:true, color:NAVY});
+        sl.addTable(rows, {x:0.6, y:2.9, w:5.9, colW:[2.9,1.65,1.35], fontFace:F, fontSize:10.5, color:INK, border:{type:"solid", pt:0.5, color:LINE}, margin:0.05, valign:"middle", autoPage:false});
+        var n=0, dn=0, late=0; x.r.factors.forEach(function(f){ (f.acts||[]).forEach(function(a){ n++; if(actDoneBy(a, q.end)) dn++; else if(a.due<ASOF) late++; }); });
+        T(sl, "แนวทางจัดการ: เสร็จ "+dn+" จาก "+n+(late?" · เลยกำหนด "+late:""), {x:0.6, y:6.45, w:5.9, h:0.35, fontSize:11, color:MUT});
+        T(sl, "ประเด็นเสนอ RMC", {x:6.9, y:2.5, w:5.8, h:0.35, fontSize:13, bold:true, color:NAVY});
+        var parts=[]; Gr.items.forEach(function(it, ii){ var L=rvItemLine(q, it);
+          parts.push({text:L.what, options:{bold:true, breakLine:true}});
+          if(L.own) parts.push({text:"Risk Owner: "+L.own, options:{color:MUT, breakLine:true}});
+          parts.push({text:"Risk ส่วนกลาง: "+(L.cm||"—"), options:{color:"233A95", breakLine: ii<Gr.items.length-1}});
+          if(ii<Gr.items.length-1) parts.push({text:" ", options:{breakLine:true, fontSize:6}}); });
+        sl.addShape(P.ShapeType.roundRect, {x:6.9, y:2.9, w:5.8, h:3.9, rectRadius:0.06, fill:{color:SOFT}, line:{color:SOFT}});
+        T(sl, parts, {x:7.1, y:3.05, w:5.4, h:3.6, fontSize: Gr.items.length>2 ? 10 : 11.5, paraSpaceAfter:2}); });
+      /* สรุปเรื่องที่ขอให้ RMC พิจารณา */
+      s=frame("เรื่องที่ขอให้ RMC พิจารณา", A.n+" รายการจาก "+A.g.length+" ความเสี่ยง");
+      var lines=[]; A.g.forEach(function(Gr, gi){ lines.push({text:(gi+1)+". "+Gr.x.r.id+"  "+Gr.x.r.title, options:{bold:true, breakLine:true, color:NAVY}});
+        Gr.items.forEach(function(it){ var L=rvItemLine(q, it); lines.push({text:L.cm||L.what, options:{bullet:{indent:14}, breakLine:true}}); }); });
+      if(lines.length) lines[lines.length-1].options.breakLine=false;
+      T(s, lines, {x:0.6, y:1.55, w:12.1, h:5.3, fontSize: lines.length>14 ? 10 : 12, paraSpaceAfter:4});
+      return P.write({outputType:"blob"}).then(function(blob){ return saveFile("PRECISE_RMC_"+q.label.replace("/","-")+".pptx", blob); });
+    }).catch(function(){ toast("สร้างสไลด์ไม่สำเร็จ ลองใหม่อีกครั้ง"); });
+  }
+  function rvRerender(){ var y=window.scrollY; rerenderFilterable(); window.scrollTo(0, y); }
+  function rvGoStep(n){ rvStep=n; rvCloseAsk=false; rerenderFilterable(); var st=document.querySelector(".rv-steps"); if(st && st.getBoundingClientRect().top<0) st.scrollIntoView({block:"start"}); var b=document.querySelector('.rv-st[data-rv-step="'+n+'"]'); if(b) b.focus(); }
+  document.addEventListener("click", function(e){ if(CUR!=="review" || !e.target.closest) return;
+    var t;
+    if((t=e.target.closest("[data-rv-step]"))){ rvGoStep(+t.getAttribute("data-rv-step")); return; }
+    if(e.target.closest("[data-rv-cur]")){ rvQ=QCUR.id; rvRerender(); return; }
+    if((t=e.target.closest("[data-rv-f1]"))){ rvF1=t.getAttribute("data-rv-f1"); rvRerender(); return; }
+    if((t=e.target.closest("[data-rv-f3]"))){ rvF3=t.getAttribute("data-rv-f3"); rvRerender(); return; }
+    if((t=e.target.closest("[data-rv-quad]"))){ rvF3=t.getAttribute("data-rv-quad"); rvGoStep(3); return; }
+    if((t=e.target.closest("[data-rv-remind]"))){ var rr=riskById(t.getAttribute("data-rv-remind")), f=flowOf(rr); toast("ส่งแจ้งเตือนให้ "+(f.state==="submitted" ? coordName(rr) : (rr.owner||"Risk Owner"))+" แล้ว"); return; }
+    if((t=e.target.closest("[data-rv-rmc]"))){ var q=qById(rvQ), key=t.getAttribute("data-rv-rmc"), c=rvGet(q.id, key), on=!(c&&c.rmc); rvSet(q.id, key, {rmc:on});
+      logAudit(key.split("|")[1], "risk", (on?"เลือกเสนอ RMC":"ยกเลิกเสนอ RMC")+" · "+q.label, [{t:key.split("|").slice(2).join("|")}]);
+      rvRerender(); var nb=document.querySelector('[data-rv-rmc="'+key.replace(/"/g,'\\"')+'"]'); if(nb) nb.focus(); return; }
+    if(e.target.closest("[data-rv-slides]")){ rvSlides(); return; }
+    if((t=e.target.closest("[data-rv-res]"))){ var pr=t.getAttribute("data-rv-res").split("|"), q5=qById(rvQ), mk="m|"+pr[0], cur=rvGet(q5.id, mk)||{}, nv=cur.res===pr[1]?"":pr[1];
+      rvSet(q5.id, mk, {res:nv}); logAudit(pr[0], "risk", "บันทึกมติ RMC · "+q5.label, [{t:"มติ", a:cur.res||"—", b:nv||"—"}]); rvRerender(); return; }
+    if((t=e.target.closest("[data-rv-close]"))){ var v=t.getAttribute("data-rv-close"), qq=qById(rvQ);
+      if(v==="ask"){ rvCloseAsk=true; rvRerender(); return; }
+      if(v==="no"){ rvCloseAsk=false; rvRerender(); return; }
+      var all=sessGet("prc-qclose", {}); all[qq.id]={by:currentUser.name, d:ASOF}; sessSet("prc-qclose", all); rvCloseAsk=false; rvRerender(); toast("ปิดรอบ "+qq.label+" แล้ว"); return; }
+  });
+  document.addEventListener("change", function(e){ if(CUR!=="review") return;
+    if(e.target.id==="rvQ"){ rvQ=e.target.value; rvCloseAsk=false; rvRerender(); return; }
+    var mt=e.target.getAttribute && e.target.getAttribute("data-rv-mt");
+    if(mt){ var qm=qById(rvQ), om=rvSet(qm.id, "m|"+mt, {t:e.target.value}); logAudit(mt, "risk", "รายละเอียดมติ RMC · "+qm.label, [{t:"มติ", a:om&&om.t?om.t:"—", b:e.target.value||"—"}]); return; }
+    var key=e.target.getAttribute && e.target.getAttribute("data-rv-cm"); if(!key) return;
+    var q=qById(rvQ), old=rvSet(q.id, key, {t:e.target.value});
+    logAudit(key.split("|")[1], "risk", "ความเห็น Risk ส่วนกลาง · "+q.label, [{t:key.split("|").slice(2).join("|"), a:old&&old.t?old.t:"—", b:e.target.value||"—"}]);
+    var infos=rvInfos(q), needs=rvKriItems(infos, q).filter(rvNeeds).concat(rvActItems(infos, q).filter(rvNeeds)), nD=needs.filter(function(it){ var c=rvGet(q.id, it.key); return c && String(c.t).trim(); }).length;
+    var pg=document.querySelector(".rv-body .qr-prog b"); if(pg) pg.textContent=nD;
+    var s3=document.querySelector('.rv-st[data-rv-step="3"] .rv-sx > span'); if(s3) s3.textContent='ความเห็น '+nD+'/'+needs.length+' รายการที่ต้องดู';
+  });
+
+  /* ---------------- YEAR-END REVIEW (ทบทวนสิ้นปี → Risk Profile ปีถัดไป) ---------------- */
+  var YE = PRC.YEAR_END || null, PREV = PRC.PREV_YEAR || {risks:[]};
+  var YE_CATS = [["SR","Strategic"],["FR","Financial"],["OR","Operational"],["ER","ESG"],["CR","Compliance"]];
+  function yeStore(){ var s=sessGet("prc-yearend", null); if(s) return s; return {dec:JSON.parse(JSON.stringify((YE&&YE.seed)||{})), adds:JSON.parse(JSON.stringify((YE&&YE.adds)||[]))}; }
+  function yeSave(s){ sessSet("prc-yearend", s); }
+  function yeNewId(r){ return r.id.replace(/-\d{2}-(\d{2})$/, "-"+YE.to.slice(2)+"-$1"); }
+  function yeParts(id){ var m=/^([A-Z]+)-([A-Z]{2})-\d{2}-(\d{2})$/.exec(id); return m ? {co:m[1], cat:m[2], n:+m[3]} : null; }
+  function yeAddIds(s){ var used={}; RISKS.forEach(function(r){ var p=yeParts(r.id); if(p){ var k=p.co+"-"+p.cat; used[k]=Math.max(used[k]||0, p.n); } });
+    return s.adds.map(function(a){ var k=a.sub+"-"+a.cat; used[k]=(used[k]||0)+1; return a.sub+"-"+a.cat+"-"+YE.to.slice(2)+"-"+("0"+used[k]).slice(-2); }); }
+  function yePrevOf(rid){ return PREV.risks.filter(function(p){ return (p.to||[]).indexOf(rid)!==-1; }); }
+  function yeEditable(){ return !!currentUser && can(CAN_REVIEW) && !yeS().opened; }
+  function yeList(){ return filteredRisks().filter(function(r){ return riskAt(r, QCUR.end).exists; }); }
+  function yeCounts(list, s){ var c={carry:0, merge:0, close:0, none:0}; list.forEach(function(r){ var d=s.dec[r.id]; c[d&&d.d?d.d:"none"]++; }); return c; }
+  var YE_D = [["carry","ยกไป "+(YE?YE.to:"")],["merge","รวม"],["close","ปิด"]];
+  function renderYearEnd(){
+    if(!YE) return emptyState('ยังไม่เปิดรอบทบทวนสิ้นปี');
+    var s=yeStore(), list=yeList(), edit=yeEditable(), c=yeCounts(list, s), addIds=yeAddIds(s);
+    var carried=list.filter(function(r){ var d=s.dec[r.id]; return d && d.d==="carry"; });
+    var sum='<div class="ye-sum"><span>ยกไป '+YE.to+' <b class="mono">'+c.carry+'</b></span><span>รวมกับเรื่องอื่น <b class="mono">'+c.merge+'</b></span><span>ปิด <b class="mono">'+c.close+'</b></span><span>ความเสี่ยงใหม่ <b class="mono">'+s.adds.length+'</b></span>'+
+      '<span class="'+(c.none?'ye-left':'')+'">ยังไม่ตัดสินใจ <b class="mono">'+c.none+'</b></span></div>';
+    var rows=list.map(function(r){ var d=s.dec[r.id]||{}, x=riskQInfo(r, QCUR), prev=yePrevOf(r.id);
+      var seg = edit ? '<div class="ye-seg" role="group" aria-label="การตัดสินใจ '+r.id+'">'+YE_D.map(function(o){ var on=d.d===o[0]; return '<button type="button" class="'+(on?'on '+o[0]:'')+'" aria-pressed="'+on+'" data-ye-d="'+r.id+'|'+o[0]+'">'+o[1]+'</button>'; }).join('')+'</div>'
+        : (d.d ? '<span class="ye-dro '+d.d+'">'+YE_D.filter(function(o){ return o[0]===d.d; })[0][1]+'</span>' : '<span class="qr-none">—</span>');
+      var det='';
+      if(d.d==="carry"){ var t=d.title!=null?d.title:r.title, renamed=t.trim()!==r.title.trim();
+        det='<div class="ye-new"><span class="mono ye-nid">'+yeNewId(r)+'</span>'+(renamed?'<span class="ye-ren">เปลี่ยนชื่อ</span>':'')+'</div>'+
+          (edit ? '<textarea class="qr-cm" rows="'+Math.max(2, Math.ceil(t.length/58))+'" data-ye-title="'+r.id+'" aria-label="ชื่อความเสี่ยงปี '+YE.to+'">'+esc(t)+'</textarea>' : '<div class="qr-cmro">'+esc(t)+'</div>'); }
+      else if(d.d==="merge"){ var opts=carried.filter(function(o){ return o!==r; });
+        det = edit ? '<label class="ye-f"><span>รวมเข้ากับ</span><select class="rf-sel" data-ye-into="'+r.id+'"><option value="">เลือกความเสี่ยงที่ยกไป '+YE.to+'</option>'+opts.map(function(o){ return '<option value="'+o.id+'"'+(d.into===o.id?' selected':'')+'>'+yeNewId(o)+' · '+esc((s.dec[o.id].title||o.title).slice(0,60))+'</option>'; }).join('')+'</select></label>'
+          : '<div class="qr-cmro">รวมเข้ากับ <span class="mono">'+(d.into?yeNewId(riskById(d.into)):'—')+'</span></div>';
+        if(d.into && !carried.some(function(o){ return o.id===d.into; })) det+='<div class="ye-warn">เรื่องที่เลือกไม่ได้ยกไป '+YE.to+' แล้ว เลือกใหม่</div>'; }
+      else if(d.d==="close"){ det = edit ? '<textarea class="qr-cm" rows="1" data-ye-note="'+r.id+'" aria-label="เหตุผลที่ปิด '+r.id+'" placeholder="เหตุผลที่ปิด">'+esc(d.note||"")+'</textarea>' : '<div class="qr-cmro">'+esc(d.note||"—")+'</div>'; }
+      return '<tr><td class="ye-old"><button type="button" class="qr-rid mono" data-risk="'+r.id+'">'+r.id+'</button><div class="ye-t">'+esc(r.title)+'</div>'+
+          (prev.length?'<div class="ye-from">สืบเนื่องจาก '+PREV.year+': '+prev.map(function(p){ return '<span class="mono">'+p.id+'</span>'; }).join(', ')+'</div>':'')+'</td>'+
+        '<td class="ye-lv">'+lvPillLI(x.s)+'<div>'+rvLevelTiny(x)+'</div></td><td>'+seg+'</td><td class="ye-det">'+det+'</td></tr>'; }).join('');
+    var subOpts=function(v){ return SUBS.map(function(x){ return '<option value="'+x.id+'"'+(v===x.id?' selected':'')+'>'+x.id+'</option>'; }).join(''); };
+    var catOpts=function(v){ return YE_CATS.map(function(x){ return '<option value="'+x[0]+'"'+(v===x[0]?' selected':'')+'>'+x[1]+'</option>'; }).join(''); };
+    var fromOpts=function(v){ return '<option value="">ไม่มี (เรื่องใหม่)</option>'+list.map(function(r){ return '<option value="'+r.id+'"'+(v===r.id?' selected':'')+'>'+r.id+'</option>'; }).join(''); };
+    var adds=s.adds.map(function(a, i){
+      return '<div class="ye-add">'+(edit ?
+        '<span class="mono ye-nid">'+addIds[i]+'</span><select class="rf-sel" data-ye-new="'+i+':sub" aria-label="บริษัท">'+subOpts(a.sub)+'</select><select class="rf-sel" data-ye-new="'+i+':cat" aria-label="ประเภท">'+catOpts(a.cat)+'</select>'+
+        '<textarea class="qr-cm" rows="1" data-ye-new="'+i+':title" aria-label="ชื่อความเสี่ยงใหม่" placeholder="ชื่อความเสี่ยง (เขียนเป็นเหตุการณ์ในอนาคต)">'+esc(a.title||"")+'</textarea>'+
+        '<label class="ye-f"><span>สืบเนื่องจาก</span><select class="rf-sel" data-ye-new="'+i+':from">'+fromOpts(a.from)+'</select></label><button type="button" class="ye-del" data-ye-del="'+i+'" aria-label="ลบ">&times;</button>'
+        : '<span class="mono ye-nid">'+addIds[i]+'</span><span>'+esc(a.title||"")+'</span>'+(a.from?'<span class="ye-from">สืบเนื่องจาก <span class="mono">'+a.from+'</span></span>':''))+'</div>'; }).join('');
+    return sum+'<div class="qr-tw"><table class="qr-t ye-t"><thead><tr><th>ความเสี่ยงปี '+YE.from+'</th><th>ระดับ '+QCUR.label+'</th><th>การตัดสินใจ</th><th>ปี '+YE.to+'</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+  function dlgProfile(){ var s=yeStore(), list=yeList(), addIds=yeAddIds(s);
+    var carried=list.filter(function(r){ var d=s.dec[r.id]; return d && d.d==="carry"; });
+    var items=carried.map(function(r){ var d=s.dec[r.id], t=d.title!=null?d.title:r.title, from=[r.id].concat(list.filter(function(o){ var e=s.dec[o.id]; return e && e.d==="merge" && e.into===r.id; }).map(function(o){ return o.id; }));
+      return {id:yeNewId(r), t:t, from:from, ren:t.trim()!==r.title.trim()}; });
+    s.adds.forEach(function(a, i){ items.push({id:addIds[i], t:a.title||"", from:a.from?[a.from]:[], add:true}); });
+    items.sort(function(a,b){ return a.id<b.id?-1:1; });
+    var closed=list.filter(function(r){ var d=s.dec[r.id]; return d && d.d==="close"; }), none=list.filter(function(r){ var d=s.dec[r.id]; return !d || !d.d; });
+    var body=(none.length?'<div class="dl-alert watch">'+icon("flag")+'<div><b>ยังไม่ตัดสินใจ '+none.length+' เรื่อง</b>'+none.map(function(r){ return r.id; }).join(', ')+'</div></div>':'')+
+      '<h4 class="ye-dh">ความเสี่ยงปี '+YE.to+' <span class="rf-n">'+items.length+'</span></h4><ol class="ye-pl">'+items.map(function(it){ return '<li><span class="mono ye-nid">'+it.id+'</span><div><div>'+esc(it.t)+'</div><div class="ye-from">'+
+        (it.from.length ? 'สืบเนื่องจาก '+it.from.map(function(f){ return '<span class="mono">'+f+'</span>'; }).join(' + ')+(it.ren?' · เปลี่ยนชื่อ':'')+(it.from.length>1?' · รวม '+it.from.length+' เรื่อง':'') : 'เรื่องใหม่')+'</div></div></li>'; }).join('')+'</ol>'+
+      (closed.length?'<h4 class="ye-dh">ปิดสิ้นปี '+YE.from+' <span class="rf-n">'+closed.length+'</span></h4><ol class="ye-pl">'+closed.map(function(r){ return '<li><span class="mono ye-nid">'+r.id+'</span><div><div>'+esc(r.title)+'</div><div class="ye-from">'+esc(s.dec[r.id].note||"")+'</div></div></li>'; }).join('')+'</ol>':'');
+    return dlgShell({title:"Risk Profile "+YE.to, sub:'จากการทบทวนสิ้นปี '+YE.from+' · เสนอ '+esc(YE.rmc), cls:"wide", body:body,
+      hint:'Baseline และ Target ปี '+YE.to+' กำหนดเมื่อ RMC เห็นชอบ', foot:'<button type="button" class="ra-btn" data-ae-cancel="1">ปิด</button>'}); }
+  /* สืบเนื่องจากปีก่อน (แท็บประวัติ) */
+  function yeLineageHtml(r){ var prev=yePrevOf(r.id); if(!prev.length) return '';
+    return '<div class="ye-lin"><h4>สืบเนื่องจากปี '+PREV.year+'</h4>'+prev.map(function(p){ return '<div class="ye-lr"><span class="mono ye-nid">'+p.id+'</span><div><div>'+esc(p.title)+'</div><div class="ye-from">'+(p.q4?'ระดับ Q4/'+PREV.year.slice(2)+' '+p.q4[0]+'×'+p.q4[1]+' · ':'')+esc(p.note||"")+'</div></div></div>'; }).join('')+'</div>'; }
+  document.addEventListener("click", function(e){ if(CUR!=="yearly" || !e.target.closest) return; var t, s;
+    if((t=e.target.closest("[data-ye-d]"))){ var p=t.getAttribute("data-ye-d").split("|"); s=yeStore(); var cur=s.dec[p[0]]||{}; s.dec[p[0]]={d: cur.d===p[1] ? "" : p[1], title:cur.title, into:cur.into, note:cur.note}; yeSave(s);
+      logAudit(p[0], "risk", "ทบทวนสิ้นปี "+YE.from+": "+(s.dec[p[0]].d ? YE_D.filter(function(o){ return o[0]===p[1]; })[0][1] : "ยกเลิกการตัดสินใจ"), []); rvRerender(); return; }
+    if(e.target.closest("[data-ye-add]")){ s=yeStore(); s.adds.push({sub:"PCC", cat:"SR", title:"", from:""}); yeSave(s); rvRerender(); var ts=document.querySelectorAll('[data-ye-new$=":title"]'); if(ts.length) ts[ts.length-1].focus(); return; }
+    if((t=e.target.closest("[data-ye-del]"))){ s=yeStore(); s.adds.splice(+t.getAttribute("data-ye-del"),1); yeSave(s); rvRerender(); return; }
+    if(e.target.closest("[data-ye-profile]")){ openDlg({kind:"profile"}, e.target.closest("[data-ye-profile]")); return; }
+  });
+  document.addEventListener("change", function(e){ if(CUR!=="yearly" || !e.target.getAttribute) return; var s, a;
+    if((a=e.target.getAttribute("data-ye-title"))){ s=yeStore(); s.dec[a].title=e.target.value; yeSave(s); logAudit(a, "risk", "ชื่อความเสี่ยงปี "+YE.to, [{t:yeNewId(riskById(a)), b:e.target.value}]); rvRerender(); return; }
+    if((a=e.target.getAttribute("data-ye-into"))){ s=yeStore(); s.dec[a].into=e.target.value; yeSave(s); rvRerender(); return; }
+    if((a=e.target.getAttribute("data-ye-note"))){ s=yeStore(); s.dec[a].note=e.target.value; yeSave(s); return; }
+    if((a=e.target.getAttribute("data-ye-new"))){ var p=a.split(":"); s=yeStore(); s.adds[+p[0]][p[1]]=e.target.value; yeSave(s); if(p[1]!=="title") rvRerender(); return; }
+  });
+
+  /* ---------------- มติ RMC: ปรับ L×I / Baseline / Target / Appetite / Tolerance → Revision + Audit Trail ---------------- */
+  var RD_T = [["LI","ระดับ L×I"],["base","Baseline"],["target","Target"],["app","Appetite"],["tol","Tolerance"]];
+  function rdMtgDefault(){ return QCUR ? String(QCUR.rmc||"").split(" · ")[0] : ""; }
+  function rdApply(c){ var r=riskById(c.rid); if(!r) return;
+    if(c.t==="LI"){ r.L=c.b[0]; r.I=c.b[1]; r.level=LV_NAME[levelForLICorrect(r.L, r.I)]; }
+    else if(c.t==="base" || c.t==="target"){ RL[r.id]=RL[r.id]||{base:null, target:null}; var o=RL[r.id][c.t];
+      RL[r.id][c.t] = o ? {L:c.b[0], I:c.b[1], mtg:o.mtg, d:o.d, by:o.by} : (c.t==="base" ? {L:c.b[0], I:c.b[1], mtg:c.mtg, d:ASOF} : {L:c.b[0], I:c.b[1], by:ASOF.slice(0,4)+"-12"});
+      if(c.t==="base") delete BASE_PENDING[r.id]; }
+    else { var k=r.kris.filter(function(x){ return x.name===c.k; })[0]; if(!k) return; k[c.t==="app"?"appetite":"tolerance"]=c.b;
+      var md=kriMd(r,k), v=hNum(k.current); if(v!==null && md.app!==null) k.status=hStatus(md, v); }
+    REV.push(c); REV.sort(function(a,b){ return b.p.localeCompare(a.p); }); }
+  function applyRmcDecs(){ sessGet("prc-rmc-dec", []).forEach(rdApply); }
+  function rdDefaults(d){ var r=riskById(d.rid); if(!r) return d;
+    if(d.t==="LI"){ d.L=r.L; d.I=r.I; }
+    else if(d.t==="base" || d.t==="target"){ var o=(RL[r.id]||{})[d.t]; d.L=o?o.L:r.L; d.I=o?o.I:r.I; }
+    else { d.ki=0; var k=r.kris[0]; d.val=k ? (d.t==="app"?k.appetite:k.tolerance)||"" : ""; }
+    return d; }
+  function openRmcDec(opener){ var list=filteredRisks(); if(!list.length) return;
+    openDlg(rdDefaults({kind:"rmcdec", rid:list[0].id, t:"LI", mtg:rdMtgDefault(), note:"", err:""}), opener); }
+  function rdOld(d, r){ if(d.t==="LI") return [r.L, r.I]; if(d.t==="base"||d.t==="target"){ var o=(RL[r.id]||{})[d.t]; return o?[o.L,o.I]:null; }
+    var k=r.kris[d.ki]; return k ? (d.t==="app"?k.appetite:k.tolerance)||"" : ""; }
+  function dlgRmcDec(){ var d=dlg, r=riskById(d.rid), list=filteredRisks(), old=rdOld(d, r);
+    var num=function(id, v){ return '<select class="rf-sel" id="'+id+'">'+[1,2,3,4].map(function(n){ return '<option'+(n===v?' selected':'')+'>'+n+'</option>'; }).join('')+'</select>'; };
+    var isLv = d.t==="LI"||d.t==="base"||d.t==="target";
+    var field = isLv
+      ? '<div class="rd-row"><label class="ae-f1"><span>L (โอกาส)</span>'+num("rdL", +d.L)+'</label><label class="ae-f1"><span>I (ผลกระทบ)</span>'+num("rdI", +d.I)+'</label>'+
+          '<div class="ae-f1"><span>ระดับ</span><div class="rd-lv">'+levelPill(LV_NAME[levelForLICorrect(+d.L,+d.I)])+'</div></div>'+
+          '<div class="ae-f1"><span>ค่าเดิม</span><div class="rd-old mono">'+(old?old[0]+'×'+old[1]:'ยังไม่มี')+'</div></div></div>'
+      : (r.kris.length ? '<div class="rd-row"><label class="ae-f1 rd-grow"><span>KRI</span><select class="rf-sel" id="rdK">'+r.kris.map(function(k, i){ return '<option value="'+i+'"'+(i===+d.ki?' selected':'')+'>'+esc(k.name)+'</option>'; }).join('')+'</select></label>'+
+          '<label class="ae-f1"><span>ค่าใหม่</span><input class="ae-in mono" id="rdVal" value="'+escAttr(d.val||"")+'" placeholder="เช่น ≤10%"></label>'+
+          '<div class="ae-f1"><span>ค่าเดิม</span><div class="rd-old mono">'+esc(old||"—")+'</div></div></div>' : '<div class="ov-none">ความเสี่ยงนี้ไม่มี KRI</div>');
+    var body='<label class="ae-f1"><span>ความเสี่ยง</span><select class="rf-sel" id="rdRisk">'+list.map(function(x){ return '<option value="'+x.id+'"'+(x.id===d.rid?' selected':'')+'>'+x.id+' · '+esc(x.title.slice(0,70))+'</option>'; }).join('')+'</select></label>'+
+      '<div class="ae-f1"><span>เรื่องที่ปรับ</span><div class="ae-seg rd-seg" role="group" aria-label="เรื่องที่ปรับ">'+RD_T.map(function(o){ var on=d.t===o[0]; return '<button type="button" class="'+(on?'on':'')+'" aria-pressed="'+on+'" data-rd-t="'+o[0]+'">'+o[1]+'</button>'; }).join('')+'</div></div>'+
+      field+
+      '<div class="rd-row"><label class="ae-f1"><span>ครั้งประชุม</span><input class="ae-in" id="rdMtg" value="'+escAttr(d.mtg||"")+'"></label>'+
+      '<label class="ae-f1 rd-grow"><span>มติ / เหตุผล <b class="ae-late">จำเป็น</b></span><textarea class="ae-in" rows="2" id="rdNote">'+esc(d.note||"")+'</textarea></label></div>'+
+      (d.err?'<div class="dl-err" role="alert">'+esc(d.err)+'</div>':'');
+    return dlgShell({title:"บันทึกมติ RMC", sub:'ลง Revision และ Audit Trail อัตโนมัติ · มีผลกับรอบ '+roundLabel(ASOF.slice(0,7)), cls:"wide", body:body,
+      foot:'<button type="button" class="ra-btn" data-ae-cancel="1">ยกเลิก</button><button type="button" class="ra-btn primary" data-rd-save="1">'+icon("check")+'บันทึกมติ</button>'}); }
+  function saveRmcDec(){ var d=dlg, r=riskById(d.rid), old=rdOld(d, r), isLv=d.t==="LI"||d.t==="base"||d.t==="target", b=isLv?[+d.L,+d.I]:String(d.val||"").trim();
+    if(isLv ? (old && old[0]===b[0] && old[1]===b[1]) : (!b || b===old)){ d.err="ค่าใหม่ต้องต่างจากค่าเดิม"; keepScroll(renderDlg); return; }
+    if(!String(d.note).trim()){ d.err="ใส่มติหรือเหตุผล"; keepScroll(renderDlg); var n=document.getElementById("rdNote"); if(n) n.focus(); return; }
+    var c={p:ASOF.slice(0,7), rid:r.id, t:d.t, a:old||(isLv?[0,0]:""), b:b, by:currentUser.name, note:(d.mtg?d.mtg+" · ":"")+String(d.note).trim(), mtg:d.mtg};
+    if(!isLv) c.k=r.kris[d.ki].name;
+    if(isLv && !old) c.a=b.slice();
+    var all=sessGet("prc-rmc-dec", []); all.push(c); sessSet("prc-rmc-dec", all); rdApply(c);
+    logAudit(r.id, "risk", "บันทึกมติ RMC · "+RD_T.filter(function(o){ return o[0]===d.t; })[0][1]+(c.k?" ("+c.k+")":""), [{t:d.mtg||"มติ", a:isLv?(old?old.join("×"):"—"):(old||"—"), b:isLv?b.join("×"):b}, {t:"เหตุผล", b:String(d.note).trim()}]);
+    closeDlg(); rerenderFilterable(); toast("บันทึกมติของ "+r.id+" แล้ว"); }
+  document.addEventListener("click", function(e){ if(!e.target.closest) return; var t;
+    if(e.target.closest("[data-rd-open]")){ openRmcDec(e.target.closest("[data-rd-open]")); return; }
+    if(!dlg || dlg.kind!=="rmcdec") return;
+    if((t=e.target.closest("[data-rd-t]"))){ dlg.t=t.getAttribute("data-rd-t"); dlg.err=""; rdDefaults(dlg); keepScroll(renderDlg); return; }
+    if(e.target.closest("[data-rd-save]")){ saveRmcDec(); return; }
+  });
+  document.addEventListener("change", function(e){ if(!dlg || dlg.kind!=="rmcdec") return; var id=e.target.id;
+    if(id==="rdRisk"){ dlg.rid=e.target.value; dlg.err=""; rdDefaults(dlg); keepScroll(renderDlg); }
+    else if(id==="rdL" || id==="rdI"){ dlg[id==="rdL"?"L":"I"]=+e.target.value; keepScroll(renderDlg); }
+    else if(id==="rdK"){ dlg.ki=+e.target.value; var k=riskById(dlg.rid).kris[dlg.ki]; dlg.val=(dlg.t==="app"?k.appetite:k.tolerance)||""; keepScroll(renderDlg); }
+  });
+  document.addEventListener("input", function(e){ if(!dlg || dlg.kind!=="rmcdec") return; var id=e.target.id;
+    if(id==="rdVal") dlg.val=e.target.value; else if(id==="rdMtg") dlg.mtg=e.target.value; else if(id==="rdNote") dlg.note=e.target.value; });
+  /* จาก Home ไปแท็บ "อะไรเปลี่ยน" ของ Quarterly Review */
+  document.addEventListener("click", function(e){ var t=e.target.closest && e.target.closest("[data-rv-goto]"); if(!t) return; rvStep=2; rvQ=QCUR?QCUR.id:rvQ; goToPage("review"); });
+
+  /* ---------------- YEARLY REVIEW · ทบทวนประจำปี → Risk Profile ปีถัดไป ----------------
+     1 ทบทวนความเสี่ยงเดิม → 2 ระบุความเสี่ยงใหม่ตาม Objective → 3 Baseline และ Target → 4 เสนอ RMC → 5 เปิดปีใหม่ */
+  var yrStep = 1, yrAsk = false;
+  var T4 = ["Treat","Tolerate","Transfer","Terminate"], YR_RES = ["เห็นชอบ","เห็นชอบโดยมีเงื่อนไข","ให้แก้ไขแล้วเสนอใหม่"];
+  function yeS(){ var s=yeStore(); s.prof=s.prof||{}; s.rmc=s.rmc||{}; return s; }
+  function yrItems(s){ var list=yeList(), aid=yeAddIds(s), out=[];
+    list.forEach(function(r){ var d=s.dec[r.id]; if(!d || d.d!=="carry") return;
+      var from=[r.id].concat(list.filter(function(o){ var e=s.dec[o.id]; return e && e.d==="merge" && e.into===r.id; }).map(function(o){ return o.id; }));
+      var t=d.title!=null?d.title:r.title, tg=(RL[r.id]||{}).target;
+      out.push({id:yeNewId(r), r:r, t:t, from:from, ren:t.trim()!==r.title.trim(), objs:r.objs||[], cur:{L:r.L, I:r.I},
+        def:{bL:r.L, bI:r.I, tL:tg?tg.L:"", tI:tg?tg.I:"", t4:String(r.response||"Treat").split(" ")[0]}}); });
+    s.adds.forEach(function(a, i){ out.push({id:aid[i], add:i, t:a.title||"", from:a.from?[a.from]:[], objs:a.obj?[a.obj]:[], cur:null, def:{bL:"", bI:"", tL:"", tI:"", t4:"Treat"}}); });
+    out.sort(function(a,b){ return a.id<b.id?-1:1; });
+    out.forEach(function(it){ var p=s.prof[it.id]||{}; it.p={}; ["bL","bI","tL","tI","t4"].forEach(function(k){ it.p[k]= p[k]!=null ? p[k] : it.def[k]; });
+      it.done = !!(it.p.bL && it.p.bI && it.p.tL && it.p.tI && String(it.t).trim()); });
+    return out; }
+  function yrObjs(){ var out=[]; registerDomains().forEach(function(d){ d.objs.forEach(function(o){ out.push({code:o.code, title:o.title, p:d.p}); }); }); return out; }
+  function renderYearly(){
+    if(!YE || !QCUR) return emptyState('ยังไม่เปิดรอบทบทวนประจำปี');
+    var s=yeS(), list=yeList(), edit=yeEditable(), c=yeCounts(list, s), items=yrItems(s), objs=yrObjs();
+    var uncovered=objs.filter(function(o){ return !items.some(function(it){ return it.objs.indexOf(o.code)!==-1; }); }).length;
+    var nSet=items.filter(function(it){ return it.done; }).length;
+    var S=[
+      {n:1, t:"ทบทวนความเสี่ยงเดิม", s: c.none ? "warn" : "done", d:'ตัดสินใจแล้ว '+(list.length-c.none)+'/'+list.length+' เรื่อง'},
+      {n:2, t:"ระบุความเสี่ยงใหม่", s: uncovered ? "warn" : "done", d: s.adds.length+' เรื่องใหม่ · Objective ที่ยังไม่มีความเสี่ยง '+uncovered},
+      {n:3, t:"Baseline และ Target", s: items.length && nSet===items.length ? "done" : "todo", d:'กำหนดแล้ว '+nSet+'/'+items.length+' เรื่อง'},
+      {n:4, t:"เสนอ RMC", s: s.rmc.res==="เห็นชอบ"||s.rmc.res==="เห็นชอบโดยมีเงื่อนไข" ? "done" : "todo", d: s.rmc.res ? 'มติ: '+s.rmc.res : esc(YE.rmc)},
+      {n:5, t:"เปิดปี "+YE.to, s: s.opened ? "done" : "todo", d: s.opened ? 'เปิดแล้ว '+thDate(s.opened.d) : 'หลัง RMC เห็นชอบ'}];
+    var steps='<nav class="rv-steps" aria-label="ขั้นตอนทบทวนประจำปี">'+S.map(function(x){ var on=yrStep===x.n;
+      return '<button type="button" class="rv-st '+x.s+(on?' cur':'')+'" data-yr-step="'+x.n+'"'+(on?' aria-current="step"':'')+'><span class="rv-n" aria-hidden="true">'+(x.s==="done"&&!on?'✓':x.n)+'</span><span class="rv-sx"><b>'+x.t+'</b><span>'+x.d+'</span></span></button>'; }).join('')+'</nav>';
+    var chip = s.opened ? '<span class="rv-qst closed">'+icon("lock")+'เปิดปี '+YE.to+' แล้ว</span>' : '<span class="rv-qst">กำลังทบทวน · ปี '+YE.from+' → '+YE.to+'</span>';
+    var head='<div class="page-head"><div><h2>Yearly Review</h2><div class="sub">ทบทวนความเสี่ยงประจำปีเพื่อตั้ง Risk Profile '+YE.to+' เริ่มจาก Objective ปีใหม่ ไม่ใช่แค่ยกความเสี่ยงเดิมไปต่อ</div></div><div class="qr-ctl">'+chip+'</div></div>';
+    var toolbar='<div class="rf tb">'+companyRow(function(id){ return scopeRisks().filter(function(r){ return (id==="ALL"||r.sub===id) && riskAt(r, QCUR.end).exists; }).length; })+'</div>';
+    var ro = !edit ? '<div class="rv-ro">'+icon(s.opened?"lock":"eye")+'<div><b>'+(s.opened?'เปิดปี '+YE.to+' แล้ว · ดูได้อย่างเดียว':'ดูได้อย่างเดียว')+'</b>'+(s.opened?'การทบทวนประจำปีปิดแล้ว':'การทบทวนประจำปีทำโดย Risk ส่วนกลาง (สิทธิ์ Admin)')+'</div></div>' : '';
+    var body = yrStep===2 ? yr2(s, items, objs, edit) : yrStep===3 ? yr3(s, items, edit) : yrStep===4 ? yr4(s, items, list, edit) : yrStep===5 ? yr5(s, items, list, c, edit) : yr1(s);
+    return head+toolbar+steps+'<div class="card rv-body">'+ro+body+'</div>'+renderRiskModal();
+  }
+  function yrNext(n){ var t={2:"ระบุความเสี่ยงใหม่",3:"Baseline และ Target",4:"เสนอ RMC",5:"เปิดปี "+YE.to}[n]; return t ? '<div class="rv-next"><span></span><button type="button" class="ra-btn" data-yr-step="'+n+'">ขั้นที่ '+n+' · '+t+' →</button></div>' : ''; }
+  function yr1(s){ return '<div class="rv-bar"><h3>ทบทวนความเสี่ยงเดิมปี '+YE.from+'</h3></div><p class="rv-help">แต่ละเรื่องเลือก ยกไปปี '+YE.to+' (แก้ชื่อได้ ระบบออกรหัสใหม่ให้) / รวมกับเรื่องอื่น / ปิด ถ้าต้องการแยกเรื่องเดิมเป็นหลายเรื่อง ให้เพิ่มความเสี่ยงใหม่ในขั้นที่ 2 แล้วเลือก "สืบเนื่องจาก"</p>'+renderYearEnd()+yrNext(2); }
+  function yr2(s, items, objs, edit){
+    var addIds=yeAddIds(s), list=yeList();
+    var rows=objs.map(function(o){ var cov=items.filter(function(it){ return it.objs.indexOf(o.code)!==-1; });
+      return '<div class="yr-o'+(cov.length?'':' gap')+'"><div class="yr-oh"><span class="obj2-c mono">'+o.code+'</span><span class="yr-ot">'+esc(o.title)+'</span>'+tierBadge(o.code)+
+          (edit?'<button type="button" class="ae-add yr-add" data-ye-add-obj="'+o.code+'">+ เพิ่มความเสี่ยง</button>':'')+'</div>'+
+        (cov.length ? '<ul class="yr-cov">'+cov.map(function(it){ return '<li><span class="mono ye-nid">'+it.id+'</span><span>'+esc(it.t||'(ยังไม่ตั้งชื่อ)')+'</span>'+(it.add!=null?'<span class="ye-ren">ใหม่</span>':'')+'</li>'; }).join('')+'</ul>'
+          : '<div class="yr-gapmsg">ยังไม่มีความเสี่ยงปี '+YE.to+' รองรับ Objective นี้</div>')+'</div>'; }).join('');
+    var subOpts=function(v){ return SUBS.map(function(x){ return '<option value="'+x.id+'"'+(v===x.id?' selected':'')+'>'+x.id+'</option>'; }).join(''); };
+    var catOpts=function(v){ return YE_CATS.map(function(x){ return '<option value="'+x[0]+'"'+(v===x[0]?' selected':'')+'>'+x[1]+'</option>'; }).join(''); };
+    var objOpts=function(v){ return '<option value="">เลือก Objective</option>'+objs.map(function(o){ return '<option value="'+o.code+'"'+(v===o.code?' selected':'')+'>'+o.code+' · '+esc(o.title.slice(0,50))+'</option>'; }).join(''); };
+    var fromOpts=function(v){ return '<option value="">ไม่มี (เรื่องใหม่)</option>'+list.map(function(r){ return '<option value="'+r.id+'"'+(v===r.id?' selected':'')+'>'+r.id+'</option>'; }).join(''); };
+    var adds=s.adds.map(function(a, i){
+      return '<div class="yr-add-r" id="ye-add-'+i+'">'+(edit ?
+        '<div class="yr-add-top"><span class="mono ye-nid">'+addIds[i]+'</span><select class="rf-sel" data-ye-new="'+i+':sub" aria-label="บริษัท">'+subOpts(a.sub)+'</select><select class="rf-sel" data-ye-new="'+i+':cat" aria-label="ประเภท">'+catOpts(a.cat)+'</select>'+
+          '<select class="rf-sel" data-ye-new="'+i+':obj" aria-label="Objective">'+objOpts(a.obj)+'</select><label class="ye-f yr-from"><span>สืบเนื่องจาก</span><select class="rf-sel" data-ye-new="'+i+':from">'+fromOpts(a.from)+'</select></label><button type="button" class="ye-del" data-ye-del="'+i+'" aria-label="ลบ">&times;</button></div>'+
+        '<textarea class="qr-cm" rows="2" data-ye-new="'+i+':title" aria-label="ชื่อความเสี่ยงใหม่" placeholder="ชื่อความเสี่ยง เขียนเป็นเหตุการณ์ในอนาคต เช่น … อาจ … ส่งผลให้ …">'+esc(a.title||"")+'</textarea>'
+        : '<span class="mono ye-nid">'+addIds[i]+'</span> '+esc(a.title||"")+(a.obj?' · <span class="mono">'+a.obj+'</span>':''))+'</div>'; }).join('');
+    return '<div class="rv-bar"><h3>ระบุความเสี่ยงใหม่ตาม Objective ปี '+YE.to+'</h3></div>'+
+      '<p class="rv-help">ไล่ทีละ Objective ว่าความเสี่ยงที่ยกไปครอบคลุมหรือยัง Objective ที่ขึ้นสีส้มยังไม่มีความเสี่ยงรองรับ ให้พิจารณาว่ามีเหตุการณ์ใดที่ทำให้ไม่ถึงเป้า</p>'+
+      '<div class="yr-os">'+rows+'</div>'+
+      '<h4 class="rv-h4">ความเสี่ยงใหม่ปี '+YE.to+' <span class="rf-n">'+s.adds.length+'</span></h4>'+(adds||'<div class="ov-none">ยังไม่มี · กด "+ เพิ่มความเสี่ยง" ที่ Objective ด้านบน</div>')+yrNext(3); }
+  function yr3(s, items, edit){
+    function num(id, k, v){ return '<select class="rf-sel yr-n" data-yr-p="'+id+'|'+k+'" aria-label="'+k+' '+id+'"><option value="">–</option>'+[1,2,3,4].map(function(n){ return '<option'+(+v===n?' selected':'')+'>'+n+'</option>'; }).join('')+'</select>'; }
+    function lv(L, I){ return L && I ? levelPill(LV_NAME[levelForLICorrect(+L,+I)]) : '<span class="qr-none">—</span>'; }
+    var rows=items.map(function(it){ var p=it.p;
+      return '<tr class="'+(it.done?'':'yr-todo')+'"><td><span class="mono ye-nid">'+it.id+'</span><div class="ye-t">'+esc(it.t||'(ยังไม่ตั้งชื่อ)')+'</div><div class="ye-from">'+(it.from.length?'สืบเนื่องจาก '+it.from.join(' + '):'เรื่องใหม่')+'</div></td>'+
+        '<td>'+(it.cur?lvPillLI(it.cur):'<span class="qr-none">—</span>')+'</td>'+
+        '<td>'+(edit ? '<div class="yr-li">'+num(it.id,"bL",p.bL)+'×'+num(it.id,"bI",p.bI)+'</div>' : '<span class="mono">'+(p.bL||'–')+'×'+(p.bI||'–')+'</span>')+'<div class="yr-lv">'+lv(p.bL,p.bI)+'</div></td>'+
+        '<td>'+(edit ? '<div class="yr-li">'+num(it.id,"tL",p.tL)+'×'+num(it.id,"tI",p.tI)+'</div>' : '<span class="mono">'+(p.tL||'–')+'×'+(p.tI||'–')+'</span>')+'<div class="yr-lv">'+lv(p.tL,p.tI)+'</div></td>'+
+        '<td>'+(edit ? '<select class="rf-sel" data-yr-p="'+it.id+'|t4" aria-label="4T '+it.id+'">'+T4.map(function(o){ return '<option'+(p.t4===o?' selected':'')+'>'+o+'</option>'; }).join('')+'</select>' : esc(p.t4))+'</td></tr>'; }).join('');
+    var n=items.filter(function(it){ return it.done; }).length;
+    return '<div class="rv-bar"><h3>Baseline และ Target ปี '+YE.to+'</h3><span class="qr-prog">กำหนดแล้ว <b>'+n+'</b> จาก '+items.length+' เรื่อง</span></div>'+
+      '<p class="rv-help">Baseline คือระดับที่จะเสนอ RMC เห็นชอบเป็นจุดตั้งต้นของปี '+YE.to+' เรื่องที่ยกมาตั้งค่าเริ่มต้นเป็นระดับปัจจุบันและ Target เดิมให้แล้ว แก้ได้ · เรื่องใหม่ต้องกำหนดเอง</p>'+
+      (items.length ? '<div class="qr-tw"><table class="qr-t yr-t"><thead><tr><th>ความเสี่ยงปี '+YE.to+'</th><th>ระดับ '+QCUR.label+'</th><th>Baseline '+YE.to+' (L×I)</th><th>Target (L×I)</th><th>4T</th></tr></thead><tbody>'+rows+'</tbody></table></div>' : '<div class="ov-none">ยังไม่มีความเสี่ยงปี '+YE.to+' · เลือก "ยกไป" ในขั้นที่ 1 หรือเพิ่มใหม่ในขั้นที่ 2</div>')+yrNext(4); }
+  function yr4(s, items, list, edit){
+    var closed=list.filter(function(r){ var d=s.dec[r.id]; return d && d.d==="close"; });
+    var byLv={"สูงมาก":0,"สูง":0,"ปานกลาง":0,"ต่ำ":0}; items.forEach(function(it){ if(it.p.bL&&it.p.bI) byLv[LV_NAME[levelForLICorrect(+it.p.bL,+it.p.bI)]]++; });
+    var canX=currentUser && can("Export รายงาน");
+    var prof='<ol class="ye-pl">'+items.map(function(it){ return '<li><span class="mono ye-nid">'+it.id+'</span><div><div>'+esc(it.t||'(ยังไม่ตั้งชื่อ)')+'</div><div class="ye-from">'+
+        (it.from.length?'สืบเนื่องจาก '+it.from.join(' + ')+(it.ren?' · เปลี่ยนชื่อ':'')+(it.from.length>1?' · รวม '+it.from.length+' เรื่อง':''):'เรื่องใหม่')+
+        ' · Baseline '+(it.p.bL&&it.p.bI?it.p.bL+'×'+it.p.bI:'–')+' → Target '+(it.p.tL&&it.p.tI?it.p.tL+'×'+it.p.tI:'–')+' · '+esc(it.p.t4)+'</div></div></li>'; }).join('')+'</ol>';
+    var res = edit ? '<div class="rv5-res" role="group" aria-label="มติ RMC">'+YR_RES.map(function(o){ var on=s.rmc.res===o; return '<button type="button" class="'+(on?'on':'')+'" aria-pressed="'+on+'" data-yr-res="'+o+'">'+o+'</button>'; }).join('')+'</div>'+
+        '<textarea class="qr-cm" rows="2" id="yrRmcNote" aria-label="รายละเอียดมติ RMC" placeholder="รายละเอียดมติ เช่น เงื่อนไข หรือเรื่องที่ให้แก้">'+esc(s.rmc.note||"")+'</textarea>'
+      : (s.rmc.res ? '<span class="rv5-rro">'+esc(s.rmc.res)+'</span>'+(s.rmc.note?'<div class="qr-cmro">'+esc(s.rmc.note)+'</div>':'') : '<span class="qr-none">ยังไม่บันทึก</span>');
+    return '<div class="rv-bar"><h3>เสนอ RMC · Risk Profile '+YE.to+'</h3>'+(canX?'<button type="button" class="ra-btn primary" data-yr-slides="1"'+(items.length?'':' disabled')+'>'+icon("download")+'สร้างสไลด์ Risk Profile</button>':'')+'</div>'+
+      '<div class="yr-sum"><span>ความเสี่ยงปี '+YE.to+' <b class="mono">'+items.length+'</b></span><span>ยกมา '+items.filter(function(i){ return i.add==null; }).length+' · ใหม่ '+s.adds.length+'</span><span>ปิดสิ้นปี '+YE.from+' <b class="mono">'+closed.length+'</b></span>'+
+        '<span>Baseline: สูงมาก '+byLv["สูงมาก"]+' · สูง '+byLv["สูง"]+' · ปานกลาง '+byLv["ปานกลาง"]+' · ต่ำ '+byLv["ต่ำ"]+'</span></div>'+
+      '<h4 class="rv-h4">รายการ Risk Profile '+YE.to+'</h4>'+prof+
+      (closed.length?'<h4 class="rv-h4">ปิดสิ้นปี '+YE.from+'</h4><ol class="ye-pl">'+closed.map(function(r){ return '<li><span class="mono ye-nid">'+r.id+'</span><div><div>'+esc(r.title)+'</div><div class="ye-from">'+esc(s.dec[r.id].note||"")+'</div></div></li>'; }).join('')+'</ol>':'')+
+      '<h4 class="rv-h4">มติ RMC · '+esc(YE.rmc)+'</h4><div class="rv5-m">'+res+'</div>'+yrNext(5); }
+  function yr5(s, items, list, c, edit){
+    var nAct=0; items.forEach(function(it){ (it.from||[]).forEach(function(id){ var r=riskById(id); if(r) r.factors.forEach(function(f){ (f.acts||[]).forEach(function(a){ if(a.status!=="done") nAct++; }); }); }); });
+    var ok1=!c.none, ok2=items.length && items.every(function(it){ return it.done; }), ok3=s.rmc.res==="เห็นชอบ"||s.rmc.res==="เห็นชอบโดยมีเงื่อนไข", all=ok1&&ok2&&ok3;
+    function ck(ok, t, n){ return '<li class="'+(ok?'ok':'')+'"><span class="yr-ck" aria-hidden="true">'+(ok?'✓':'')+'</span><span>'+t+'</span>'+(ok?'':'<button type="button" class="rf-clear" data-yr-step="'+n+'">ไปขั้นที่ '+n+'</button>')+'</li>'; }
+    var list5='<ul class="yr-cl">'+ck(ok1,'ตัดสินใจความเสี่ยงปี '+YE.from+' ครบทุกเรื่อง',1)+ck(ok2,'กำหนด Baseline และ Target ปี '+YE.to+' ครบทุกเรื่อง',3)+ck(ok3,'RMC เห็นชอบ Risk Profile '+YE.to,4)+'</ul>';
+    var out='<ul class="yr-will"><li>ออกรหัสปี '+YE.to+' ให้ '+items.length+' เรื่อง พร้อม Baseline และ Target ที่ RMC เห็นชอบ</li><li>ยกแนวทางจัดการที่ยังไม่เสร็จ '+nAct+' ข้อไปอยู่ใต้ความเสี่ยงปี '+YE.to+'</li><li>เก็บข้อมูลปี '+YE.from+' เป็นประวัติแบบอ่านอย่างเดียว ดูย้อนหลังผ่าน "สืบเนื่องจาก"</li></ul>';
+    var act;
+    if(s.opened) act='<div class="rv-closed">'+icon("check")+'<div><b>เปิดปี '+YE.to+' แล้ว</b>โดย '+esc(s.opened.by)+' · '+thDate(s.opened.d)+' · ในต้นแบบนี้หน้าอื่นยังแสดงข้อมูลปี '+YE.from+'</div></div>';
+    else if(!edit) act='<div class="rv-help">รอ Risk ส่วนกลางเปิดปีใหม่</div>';
+    else if(yrAsk) act='<div class="rv-ask" role="alert"><div><b>ยืนยันเปิดปี '+YE.to+'?</b>หลังเปิดปีใหม่จะแก้การทบทวนประจำปีนี้ไม่ได้</div><button type="button" class="ra-btn" data-yr-open="no">ยกเลิก</button><button type="button" class="ra-btn primary" data-yr-open="yes">เปิดปี '+YE.to+'</button></div>';
+    else act='<div class="rv-closebar"><span>'+(all?'พร้อมเปิดปีใหม่':'ทำรายการด้านบนให้ครบก่อน')+'</span><button type="button" class="ra-btn'+(all?' primary':'')+'" data-yr-open="ask"'+(all?'':' disabled')+'>เปิดปี '+YE.to+'</button></div>';
+    return '<div class="rv-bar"><h3>เปิดปี '+YE.to+'</h3></div>'+list5+'<h4 class="rv-h4">เมื่อเปิดปีใหม่ ระบบจะ</h4>'+out+act; }
+  /* สไลด์ Risk Profile (.pptx) */
+  function yrSlides(){ var s=yeS(), items=yrItems(s), list=yeList(); if(!items.length) return; toast("กำลังสร้างสไลด์");
+    loadLib("pptx").then(function(){ var P=new window.PptxGenJS(); P.layout="LAYOUT_WIDE"; P.author="Risk Management PCC"; P.title="Risk Profile "+YE.to;
+      var F="Tahoma", NAVY="1F236B", INK="14161C", MUT="6B7280", LINE="D5DAE3", pg=0;
+      var LV={"l-crit":["D92D20","FBE6E3","8A1C14"],"l-high":["E6870C","FDEFD9","8A4A05"],"l-mid":["CAA400","FBF2CF","7A5B00"],"l-low":["1A9A51","E2F4E8","0F5B32"]};
+      function T(sl, text, o){ var x={fontFace:F, fontSize:12, color:INK, margin:0, isTextBox:true, valign:"top"}; for(var k in o) x[k]=o[k]; sl.addText(text, x); }
+      function frame(t, sub){ var sl=P.addSlide(); pg++; T(sl, t, {x:0.6, y:0.35, w:12.1, h:0.7, fontSize:24, bold:true, color:NAVY, valign:"middle"}); if(sub) T(sl, sub, {x:0.6, y:1.05, w:12.1, h:0.35, color:MUT});
+        T(sl, "Risk Profile "+YE.to+" · เสนอ "+YE.rmc, {x:0.6, y:7.0, w:9, h:0.3, fontSize:9, color:MUT}); T(sl, String(pg+1), {x:12.2, y:7.0, w:0.5, h:0.3, fontSize:9, color:MUT, align:"right"}); return sl; }
+      var sl=P.addSlide(); sl.background={color:NAVY};
+      T(sl, "Risk Profile "+YE.to, {x:0.8, y:2.4, w:11.5, h:1.0, fontSize:40, bold:true, color:"FFFFFF"});
+      T(sl, "ผลการทบทวนความเสี่ยงประจำปี "+YE.from, {x:0.8, y:3.45, w:11.5, h:0.6, fontSize:20, color:"CADCFC"});
+      T(sl, "เสนอ "+YE.rmc+" เพื่อพิจารณาเห็นชอบ", {x:0.8, y:4.15, w:11.5, h:0.5, fontSize:16, color:"FFFFFF"});
+      T(sl, "จัดทำโดย Risk Management PCC · ข้อมูล ณ "+asofFull(), {x:0.8, y:6.6, w:11.5, h:0.4, fontSize:11, color:"AEB5CF"});
+      var closed=list.filter(function(r){ var d=s.dec[r.id]; return d && d.d==="close"; }), merged=list.filter(function(r){ var d=s.dec[r.id]; return d && d.d==="merge"; });
+      sl=frame("สรุปการทบทวน", "ความเสี่ยงปี "+YE.from+" "+list.length+" เรื่อง → ปี "+YE.to+" "+items.length+" เรื่อง");
+      [["ยกไปปี "+YE.to, items.filter(function(i){ return i.add==null; }).length, "233A95","E6EAFC"],["รวมกับเรื่องอื่น", merged.length, "4A3AA6","EEEBFD"],["ปิดสิ้นปี "+YE.from, closed.length, "5B6472","EEF1F3"],["ความเสี่ยงใหม่", s.adds.length, "0F5B32","E2F4E8"]].forEach(function(b, i){ var x=0.6+i*3.05;
+        sl.addShape(P.ShapeType.roundRect, {x:x, y:1.7, w:2.85, h:1.4, rectRadius:0.08, fill:{color:b[3]}, line:{color:b[3]}});
+        T(sl, String(b[1]), {x:x+0.2, y:1.8, w:2.4, h:0.75, fontSize:36, bold:true, color:b[2]}); T(sl, b[0], {x:x+0.2, y:2.6, w:2.4, h:0.35, fontSize:13, color:b[2]}); });
+      var cw=2.2, ch=0.95, x0=1.6, y0=3.55;
+      T(sl, "Baseline ปี "+YE.to, {x:0.6, y:3.25, w:6, h:0.3, fontSize:12, bold:true, color:NAVY});
+      for(var L=4; L>=1; L--) for(var I=1; I<=4; I++){ var c=LV[levelForLICorrect(L,I)], cx=x0+(I-1)*cw, cy=y0+(4-L)*ch, ids=items.filter(function(it){ return +it.p.bL===L && +it.p.bI===I; }).map(function(it){ return it.id; });
+        sl.addShape(P.ShapeType.rect, {x:cx, y:cy, w:cw-0.05, h:ch-0.05, fill:{color:c[1]}, line:{color:"FFFFFF", width:0}});
+        if(ids.length) T(sl, ids.join("  "), {x:cx+0.06, y:cy+0.05, w:cw-0.17, h:ch-0.12, fontSize:ids.length>3?7.5:9, color:c[2], bold:true}); }
+      for(var k=1; k<=4; k++){ T(sl, "I"+k, {x:x0+(k-1)*cw, y:y0+4*ch, w:cw, h:0.25, fontSize:10, color:MUT, align:"center"}); T(sl, "L"+(5-k), {x:x0-0.5, y:y0+(k-1)*ch+0.3, w:0.4, h:0.3, fontSize:10, color:MUT, align:"right"}); }
+      for(var i0=0; i0<items.length; i0+=11){ var chunk=items.slice(i0, i0+11);
+        sl=frame("Risk Profile "+YE.to+(items.length>11?" ("+(i0/11+1)+"/"+Math.ceil(items.length/11)+")":""), "Baseline และ Target ที่เสนอให้เห็นชอบ");
+        var rows=[["รหัส","ความเสี่ยง","Baseline","Target","4T","สืบเนื่องจาก"].map(function(h){ return {text:h, options:{bold:true, color:MUT}}; })].concat(chunk.map(function(it){
+          function lvc(L, I){ if(!L||!I) return {text:"–"}; var cc=LV[levelForLICorrect(+L,+I)]; return {text:LV_NAME[levelForLICorrect(+L,+I)]+" "+L+"×"+I, options:{color:cc[2], fill:{color:cc[1]}, bold:true}}; }
+          return [{text:it.id, options:{fontFace:"Consolas", color:"233A95"}}, {text:it.t||""}, lvc(it.p.bL,it.p.bI), lvc(it.p.tL,it.p.tI), {text:it.p.t4}, {text:it.from.length?it.from.join(" + "):"เรื่องใหม่", options:{color:MUT}}]; }));
+        sl.addTable(rows, {x:0.6, y:1.55, w:12.1, colW:[1.55,5.6,1.35,1.35,0.95,1.3], fontFace:F, fontSize:9.5, color:INK, border:{type:"solid", pt:0.5, color:LINE}, margin:0.05, valign:"middle", autoPage:false}); }
+      if(closed.length){ sl=frame("ความเสี่ยงที่ปิดสิ้นปี "+YE.from, closed.length+" เรื่อง");
+        T(sl, closed.map(function(r, i){ return {text:r.id+"  "+r.title+(s.dec[r.id].note?"  ·  "+s.dec[r.id].note:""), options:{bullet:true, breakLine:i<closed.length-1}}; }), {x:0.6, y:1.6, w:12.1, h:5.2, fontSize:12, paraSpaceAfter:6}); }
+      return P.write({outputType:"blob"}).then(function(blob){ return saveFile("PRECISE_RiskProfile_"+YE.to+".pptx", blob); });
+    }).catch(function(){ toast("สร้างสไลด์ไม่สำเร็จ ลองใหม่อีกครั้ง"); });
+  }
+  function yrGo(n){ yrStep=n; yrAsk=false; rerenderFilterable(); var b=document.querySelector('.rv-st[data-yr-step="'+n+'"]'); if(b){ b.focus(); var st=document.querySelector(".rv-steps"); if(st && st.getBoundingClientRect().top<0) st.scrollIntoView({block:"start"}); } }
+  document.addEventListener("click", function(e){ if(CUR!=="yearly" || !e.target.closest) return; var t, s;
+    if((t=e.target.closest("[data-yr-step]"))){ yrGo(+t.getAttribute("data-yr-step")); return; }
+    if((t=e.target.closest("[data-ye-add-obj]"))){ s=yeS(); var oc=t.getAttribute("data-ye-add-obj"), dom=oc.charAt(0); s.adds.push({sub:"PCC", cat:({S:"SR",F:"FR",C:"SR",P:"OR",L:"OR",E:"ER"})[dom]||"SR", title:"", from:"", obj:oc}); yeSave(s); rvRerender();
+      var el=document.getElementById("ye-add-"+(s.adds.length-1)); if(el){ el.scrollIntoView({block:"center"}); var ta=el.querySelector("textarea"); if(ta) ta.focus(); } return; }
+    if((t=e.target.closest("[data-yr-res]"))){ s=yeS(); var v=t.getAttribute("data-yr-res"); s.rmc.res = s.rmc.res===v ? "" : v; s.rmc.d=ASOF; yeSave(s); logAudit("", "risk", "มติ RMC ต่อ Risk Profile "+YE.to+": "+(s.rmc.res||"ยกเลิก"), []); rvRerender(); return; }
+    if(e.target.closest("[data-yr-slides]")){ yrSlides(); return; }
+    if((t=e.target.closest("[data-yr-open]"))){ var o=t.getAttribute("data-yr-open"); if(o==="ask"){ yrAsk=true; rvRerender(); return; } if(o==="no"){ yrAsk=false; rvRerender(); return; }
+      s=yeS(); s.opened={d:ASOF, by:currentUser.name}; yeSave(s); yrAsk=false; rvRerender(); toast("เปิดปี "+YE.to+" แล้ว"); return; }
+  });
+  document.addEventListener("change", function(e){ if(CUR!=="yearly" || !e.target.getAttribute) return; var a, s;
+    if((a=e.target.getAttribute("data-yr-p"))){ var p=a.split("|"); s=yeS(); s.prof[p[0]]=s.prof[p[0]]||{}; s.prof[p[0]][p[1]]=e.target.value; yeSave(s); rvRerender(); return; }
+    if(e.target.id==="yrRmcNote"){ s=yeS(); s.rmc.note=e.target.value; yeSave(s); return; }
+  });
+
   /* start */
+  applyRiskEdits(); applyRmcDecs();
   (function(){ var saved=null; try{ saved=localStorage.getItem("prc-demo-user"); }catch(err){}
     if(saved && DEMO_USERS.some(function(u){ return u.id===saved; })){ loginAs(saved, true); runPending(); } else { build(); showLogin(); } })();
 })();

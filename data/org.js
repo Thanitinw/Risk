@@ -8,7 +8,7 @@ PRC.SUBS = [
     {id:"PSL", name:"Precise Smart Life", th:"บริษัท พรีไซซ สมาร์ท ไลฟ์ จำกัด", est:2552, line:"Bamboo (BCG)", pending:false, parent:null},
     {id:"PDE", name:"Precise Digital Economy", th:"บริษัท พรีไซซ ดิจิตอล อีโคโนมี่ จำกัด", est:2560, line:"Digital-AI", pending:true, parent:null},
     {id:"SBP", name:"Songkhla Bio Power", th:"บริษัท สงขลาไบโอเพาเวอร์ จำกัด", est:null, line:"Power / Renewable Energy", pending:true, parent:"PPP"},
-    {id:"PEMC", name:"PEM Cambodia", th:"พรีไซซ อีเลคตริค (กัมพูชา)", est:2563, line:"Smart Grid", pending:true, parent:"PEM"},
+    {id:"PEMC", name:"PEM Cambodia", th:"บริษัท พรีไซซ อีเลคตริค แมนูแฟคเจอริ่ง (กัมพูชา) จำกัด", est:2563, line:"Smart Grid", pending:true, parent:"PEM"},
     {id:"PCE", name:"Precise Clean Energy", th:"บริษัท พรีไซซ คลีน เอ็นเนอร์จี้ จำกัด", est:null, line:"Clean Energy", pending:true, parent:"PPP"}
   ];
 
@@ -21,7 +21,7 @@ PRC.FILTER_COMPANIES = [
     {id:"PDE", legal:"บริษัท พรีไซซ ดิจิตอล อีโคโนมี่ จำกัด"},
     {id:"SBP", legal:"บริษัท สงขลาไบโอเพาเวอร์ จำกัด"},
     {id:"PCE", legal:"บริษัท พรีไซซ คลีน เอ็นเนอร์จี้ จำกัด"},
-    {id:"PEMC", legal:"Precise Electric Manufacturing (Cambodia) Co., Ltd."}
+    {id:"PEMC", legal:"บริษัท พรีไซซ อีเลคตริค แมนูแฟคเจอริ่ง (กัมพูชา) จำกัด"}
   ];
 
 PRC.PARENT_COMPANIES = ["PEM","PSP","PPP","PSL","PDE"];
